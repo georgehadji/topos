@@ -62,7 +62,13 @@ class PipelineRepo:
         outcome: StepOutcome,
         error: str | None = None,
     ) -> None:
-        """Commit a transition."""
+        """Commit a transition.
+
+        Every branch includes `AND state = $N::pipe_state` as a guard
+        against lost updates: if locked_until expired and another worker
+        claimed the row, the state will have changed and the UPDATE
+        affects zero rows.
+        """
         new_state = outcome.next_state
         now = datetime.now(UTC)
 
@@ -75,11 +81,13 @@ class PipelineRepo:
                   last_error = $3,
                   updated_at = $4
                 WHERE artifact_id = $1::uuid
+                  AND state = $5::pipe_state
                 """,
                 artifact_id,
                 new_state.value,
                 error,
                 now,
+                from_state.value,
             )
         elif new_state != from_state:
             await self._pool.execute(
@@ -91,10 +99,12 @@ class PipelineRepo:
                   run_after = now(),
                   updated_at = $3
                 WHERE artifact_id = $1::uuid
+                  AND state = $4::pipe_state
                 """,
                 artifact_id,
                 new_state.value,
                 now,
+                from_state.value,
             )
         else:
             await self._pool.execute(

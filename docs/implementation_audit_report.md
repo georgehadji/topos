@@ -127,7 +127,27 @@ No file exceeds 400 lines.
 
 ## 7. Required Corrections
 
-None. All findings are LOW severity improvement opportunities, not defects.
+### Defects Found (post-initial-review, now fixed)
+
+| Severity | File | Issue | Status |
+|---|---|---|---|
+| **DEFECT** | `src/topos/adapters/db/pipeline_repo.py:69-100` | Park and advance UPDATE statements lacked `AND state = $N::pipe_state` guard, risking silent lost updates if `locked_until` expired and another worker claimed the row. The retry branch already had this guard. | **FIXED** — All three branches now include `AND state = $N::pipe_state` comparing against `from_state.value` |
+| **DEFECT** | `alembic/versions/002_greek_fts.py:65` | `CREATE INDEX ON chunk USING gin (tsv)` used implicit index name; downgrade referenced the auto-generated `chunk_tsv_idx`. If another index on `chunk.tsv` existed, auto-name changes. | **FIXED** — Now `CREATE INDEX chunk_tsv_idx ON chunk USING gin (tsv)` |
+
+### Prior Defects (fixed during implementation)
+
+| Severity | File | Issue | Status |
+|---|---|---|---|
+| **DEFECT** | `src/topos/adapters/db/pipeline_repo.py:11-12` | Unused `timedelta` import, `_LOCK_DURATION`, `_BACKOFF_BASE` constants | Removed |
+| **DEFECT** | `src/topos/adapters/db/pipeline_repo.py:46,118` | `$2::interval` and `$4::interval` caused `IndeterminateDatatypeError` with asyncpg | Inlined as `interval '10 minutes'` / `interval '30 seconds'` |
+| **DEFECT** | `alembic/versions/001_core.py:36` | Single `op.execute()` with 25+ SQL statements — asyncpg rejects multi-command prepared statements | Split into individual `op.execute()` calls |
+
+### Improvement Opportunities (non-blocking)
+
+| Severity | File | Issue | Recommendation |
+|---|---|---|---|
+| LOW | `infra/postgres/Dockerfile` | pgvector compiles via `make` but installs manually (3 cp commands). Could use `make install` if LLVM toolchain fixed | Document the workaround; revisit when upgrading pgvector |
+| LOW | `tests/contract/test_stepper.py` | WSL2 IP discovery via `subprocess` is Windows-specific | Add `TOPOS_TEST_PG_HOST` env var as already supported; document for non-WSL users |
 
 ---
 

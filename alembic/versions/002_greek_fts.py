@@ -62,7 +62,7 @@ def upgrade() -> None:
     # ── chunk.tsv: generated column (deferred from 001_core) ───────────────
     op.execute("ALTER TABLE chunk ADD COLUMN tsv tsvector"
                "  GENERATED ALWAYS AS (to_tsvector('greek_cfg', text)) STORED")
-    op.execute("CREATE INDEX ON chunk USING gin (tsv)")
+    op.execute("CREATE INDEX chunk_tsv_idx ON chunk USING gin (tsv)")
 
 
 def downgrade() -> None:
