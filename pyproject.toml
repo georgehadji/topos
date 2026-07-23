@@ -75,6 +75,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "PLR2004", "ARG"]
 "alembic/**" = ["E501"]
+"src/topos/adapters/sources/base.py" = ["ARG002"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "datetime.datetime.utcnow".msg = "Naive UTC is banned. Use datetime.now(UTC)."
