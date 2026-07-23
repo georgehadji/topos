@@ -62,24 +62,24 @@ class DiavgeiaPlugin(SourcePlugin):
                 continue
 
             doc_url = item.get("documentUrl", "") or item.get("url", "")
-            pdf_url = item.get("documentPdfUrl", "") or doc_url
+            # Διαύγεια v2: document download via luminapi
+            pdf_url = f"https://diavgeia.gov.gr/luminapi/api/decisions/{ada}/document"
 
-            if pdf_url:
-                async with httpx.AsyncClient(timeout=30) as client2:
-                    pdf_resp = await client2.get(pdf_url)
-                    pdf_resp.raise_for_status()
-                    yield PluginArtifact(
-                        uri=f"diavgeia://{ada}",
-                        data=pdf_resp.content,
-                        mime=pdf_resp.headers.get("content-type", "application/pdf"),
-                        meta={
-                            "ada": ada,
-                            "subject": item.get("subject", ""),
-                            "organization": item.get("organization", ""),
-                            "decisionType": item.get("decisionType", ""),
-                            "url": doc_url,
-                        },
-                    )
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client2:
+                pdf_resp = await client2.get(pdf_url)
+                pdf_resp.raise_for_status()
+                yield PluginArtifact(
+                    uri=f"diavgeia://{ada}",
+                    data=pdf_resp.content,
+                    mime=pdf_resp.headers.get("content-type", "application/pdf"),
+                    meta={
+                        "ada": ada,
+                        "subject": item.get("subject", ""),
+                        "organization": item.get("organization", ""),
+                        "decisionType": item.get("decisionType", ""),
+                        "url": doc_url,
+                    },
+                )
 
 
 def _extract_decisions(data: Any) -> list[dict[str, Any]]:
