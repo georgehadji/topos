@@ -22,6 +22,15 @@ app = FastAPI(title="Topos", version="0.1.0")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
+
+# Prometheus metrics (slice 1.15)
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+
+    Instrumentator().instrument(app).expose(app)
+except ImportError:
+    pass
+
 app.include_router(artifacts_router)
 app.include_router(search_router)
 

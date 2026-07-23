@@ -95,7 +95,7 @@ plugins = ["pydantic.mypy"]
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["aioboto3.*", "botocore.*", "testcontainers.*", "shapely.*", "asyncpg.*"]
+module = ["aioboto3.*", "botocore.*", "testcontainers.*", "shapely.*", "asyncpg.*", "prometheus_fastapi_instrumentator.*"]
 ignore_missing_imports = true
 
 # ─────────────────────────────────────────────────────────────────────────────
