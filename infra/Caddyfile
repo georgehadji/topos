@@ -1,0 +1,9 @@
+# Production reverse proxy. See docker-compose.yml (profile: prod), ADR-008.
+{
+	email admin@example.invalid
+}
+
+:80 {
+	# Placeholder host — replace with the real domain before Phase 1 deploy.
+	reverse_proxy api:8000
+}

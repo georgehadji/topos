@@ -1,0 +1,98 @@
+name: topos
+
+services:
+  postgres:
+    # PostGIS + pgvector in one image — neither official image has both.
+    build: ./infra/postgres
+    environment:
+      POSTGRES_USER: topos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devonly}
+      POSTGRES_DB: topos
+    command:
+      - postgres
+      # tuned for a 64 GB host; override in infra/postgres/prod.conf
+      - -c
+      - shared_buffers=8GB
+      - -c
+      - work_mem=64MB
+      - -c
+      - maintenance_work_mem=2GB
+      - -c
+      - max_parallel_workers_per_gather=4
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=/bin/true
+      - -c
+      - log_min_duration_statement=500
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U topos -d topos"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-topos}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-devonlydevonly}
+    volumes:
+      - miniodata:/data
+    ports: ["9000:9000", "9001:9001"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      target: runtime
+    command: uvicorn topos.interfaces.http.app:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    environment:
+      TOPOS_DB_DSN: postgresql://topos:${POSTGRES_PASSWORD:-devonly}@postgres:5432/topos
+      TOPOS_S3_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx;httpx.get('http://localhost:8000/healthz').raise_for_status()"]
+      interval: 10s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      target: runtime
+    # The stepper. Scale horizontally with `docker compose up --scale worker=N`;
+    # SKIP LOCKED makes concurrent claims safe (ARCHITECTURE.md §pipeline).
+    command: python -m topos.interfaces.cli.worker
+    env_file: .env
+    environment:
+      TOPOS_DB_DSN: postgresql://topos:${POSTGRES_PASSWORD:-devonly}@postgres:5432/topos
+      TOPOS_S3_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+
+  caddy:
+    image: caddy:2-alpine
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    ports: ["80:80", "443:443"]
+    depends_on: [api]
+    profiles: ["prod"]
+
+volumes:
+  pgdata:
+  miniodata:
+  caddydata:

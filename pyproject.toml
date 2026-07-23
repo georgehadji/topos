@@ -1,0 +1,112 @@
+[project]
+name = "topos"
+version = "0.1.0"
+description = "Constituency problem intelligence for Α΄ Θεσσαλονίκης"
+requires-python = ">=3.12"
+
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "asyncpg>=0.30",
+  "alembic>=1.14",
+  "sqlalchemy[asyncio]>=2.0",  # alembic's migration runner only — app code uses raw asyncpg
+  "typer>=0.15",
+  "httpx>=0.28",
+  "tenacity>=9.0",
+  "structlog>=24.4",
+  "orjson>=3.10",
+  "shapely>=2.0",
+  "aioboto3>=13.2",
+  "prometheus-client>=0.21",
+  "opentelemetry-sdk>=1.28",
+  "opentelemetry-instrumentation-fastapi>=0.49b0",
+]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=6.0",
+  "hypothesis>=6.119",
+  "respx>=0.21",
+  "testcontainers[postgres]>=4.8",
+  "import-linter>=2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/topos"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "F", "W",      # pycodestyle, pyflakes
+  "I",                # isort
+  "UP",               # pyupgrade
+  "B",                # bugbear
+  "SIM",              # simplify
+  "RUF",
+  "ASYNC",            # async correctness
+  "S",                # bandit — security
+  "DTZ",              # naive datetimes are a bug in this codebase
+  "T20",              # no print()
+  "PT",               # pytest style
+  "TID",              # tidy imports
+  "ARG",              # unused arguments
+  "PL",               # pylint subset
+]
+ignore = [
+  "PLR0913",          # many args is fine for pure functions with explicit params
+  "S101",             # assert is allowed (tests, and internal invariants)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "PLR2004", "ARG"]
+"alembic/**" = ["E501"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"datetime.datetime.utcnow".msg = "Naive UTC is banned. Use datetime.now(UTC)."
+"random".msg = "Nondeterminism in domain/ is banned. Inject a seed or a port."
+
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_return_any = true
+disallow_any_explicit = false
+disallow_untyped_defs = true
+no_implicit_reexport = true
+plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["aioboto3.*", "testcontainers.*", "shapely.*", "asyncpg.*"]
+ignore_missing_imports = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+  "contract: needs a real PostgreSQL (testcontainers)",
+  "golden: Greek fixture regression",
+  "e2e: full stack",
+]
+
+[tool.coverage.report]
+# domain/ is pure and must be near-fully covered; everything else is best-effort
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]

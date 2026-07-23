@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # NOTE: this is postgis-only, no pgvector — good enough for lint/type/unit/
+    # migration checks. Contract tests needing pgvector run against
+    # infra/postgres's built image; wire that as a separate job once it's
+    # pushed to a registry (tracked in docs/PROGRESS.md).
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: topos
+          POSTGRES_PASSWORD: devonly
+          POSTGRES_DB: topos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U topos" --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.10.4"
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Enable extensions (test DB lacks the pgvector-baked image)
+        run: |
+          uv run python -c "
+          import asyncpg, asyncio
+          async def main():
+              conn = await asyncpg.connect('postgresql://topos:devonly@localhost:5432/topos')
+              for ext in ('postgis','pg_trgm','unaccent','btree_gin','pgcrypto'):
+                  await conn.execute(f'CREATE EXTENSION IF NOT EXISTS {ext}')
+              await conn.close()
+          asyncio.run(main())
+          "
+
+      - name: make check
+        run: make check

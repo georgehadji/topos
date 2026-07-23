@@ -1,0 +1,82 @@
+[importlinter]
+root_package = topos
+include_external_packages = True
+
+# ── The layer rule (ARCHITECTURE.md §Layering) ───────────────────────────────
+# Higher layers may import lower ones. Never the reverse.
+[importlinter:contract:layers]
+name = Layered architecture
+type = layers
+layers =
+    topos.interfaces
+    topos.service
+    topos.adapters
+    topos.domain
+
+# ── domain/ is pure: no project imports at all ───────────────────────────────
+[importlinter:contract:domain-purity]
+name = domain imports nothing from the project
+type = forbidden
+source_modules =
+    topos.domain
+forbidden_modules =
+    topos.adapters
+    topos.service
+    topos.interfaces
+    topos.config
+
+# ── domain/ does no IO ───────────────────────────────────────────────────────
+# If domain needs the time, a random number, or a database, it takes a parameter.
+[importlinter:contract:domain-no-io]
+name = domain performs no IO
+type = forbidden
+source_modules =
+    topos.domain
+forbidden_modules =
+    asyncpg
+    httpx
+    aioboto3
+    fastapi
+    alembic
+    random
+    socket
+    subprocess
+    pathlib
+
+# ── service/ talks to adapters only through Protocols in service.ports ───────
+[importlinter:contract:service-ports-only]
+name = service does not import concrete adapters
+type = forbidden
+source_modules =
+    topos.service
+forbidden_modules =
+    topos.adapters.db
+    topos.adapters.blob
+    topos.adapters.llm
+    topos.adapters.geocode
+    topos.adapters.ocr
+    topos.adapters.stt
+
+# ── Adapters do not call each other; they are leaves ─────────────────────────
+[importlinter:contract:adapters-independent]
+name = adapters are independent of each other
+type = independence
+modules =
+    topos.adapters.db
+    topos.adapters.blob
+    topos.adapters.llm
+    topos.adapters.geocode
+    topos.adapters.ocr
+    topos.adapters.stt
+    topos.adapters.sources
+
+# ── Web framework stays in interfaces/ ───────────────────────────────────────
+[importlinter:contract:fastapi-confined]
+name = FastAPI only in interfaces
+type = forbidden
+source_modules =
+    topos.domain
+    topos.service
+    topos.adapters
+forbidden_modules =
+    fastapi
