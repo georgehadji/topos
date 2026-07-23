@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     s3_secret_key: str = Field(default="devonlydevonly")
     s3_bucket: str = Field(default="topos-artifacts")
 
-    llm_provider: str = Field(default="unset")  # see docs/PROGRESS.md Q1 — EU endpoint TBD
+    llm_provider: str = Field(default="unset")
+    llm_api_key: str = Field(default="")
+    llm_base_url: str = Field(default="https://openrouter.ai/api/v1")
+    llm_model: str = Field(default="mistralai/mistral-large-2512")
     llm_monthly_budget_eur: float = Field(default=250.0)
 
     log_level: str = Field(default="INFO")
