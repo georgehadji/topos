@@ -65,8 +65,6 @@ class DiavgeiaPlugin(SourcePlugin):
                 # Build paginated request
                 params: dict[str, str] = {
                     "size": str(cfg.page_size),
-                    "sort": "ada",
-                    "order": "desc",
                 }
                 if cfg.org:
                     params["org"] = cfg.org
