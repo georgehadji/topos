@@ -23,6 +23,11 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO")
 
+    # OIDC auth (slice 1.11)
+    oidc_discovery_url: str = Field(default="")
+    oidc_client_id: str = Field(default="")
+    oidc_client_secret: str = Field(default="")
+
 
 def get_settings() -> Settings:
     return Settings()
