@@ -2,70 +2,81 @@
 
 **Project:** Topos — Constituency problem intelligence
 **Date:** 2026-07-23
-**Review scope:** Phase 0 slices 0.2, 0.4, 0.5, 0.8 + Dockerfile fixes
+**Review scope:** Phase 0 (all 14 slices) + Phase 1 (slices 1.1–1.15)
+**Commit range:** `d54af1a` (initial) .. `5359c60` (HEAD)
 
 ---
 
 ## 1. Executive Summary
 
-All implemented slices follow the project architecture contract (ARCHITECTURE.md). The functional core (domain/) remains pure with zero IO imports. The imperative shell (adapters/service/interfaces) respects the four-layer dependency ordering enforced by import-linter. Six import-linter contracts, ruff, mypy strict, and all unit + contract tests pass green. The Docker compose stack is running with all required PostgreSQL extensions (postgis, pgvector, pg_trgm, unaccent, btree_gin, pgcrypto). Both migrations (001_core: 17 tables; 002_greek_fts: Greek FTS config + chunk.tsv) were applied successfully. The concurrent worker contract test demonstrates that SKIP LOCKED prevents duplicate pipeline row claims (20 rows × 10 workers, zero duplicates).
+Phase 0 and Phase 1 are substantially implemented. The functional core (domain/) remains pure with zero IO imports across 6 domain modules. The imperative shell respects the four-layer dependency ordering enforced by 6 import-linter contracts. The Docker compose stack is running with all required PG extensions. Phase 1 delivers: paginated Διαύγεια collector, extraction schema + service with LLM integration, Thessaloniki gazetteer with geocoding chain, mention persistence, FTS + geo search, OIDC auth middleware with 4 roles + audit log, React SPA with MapLibre map, and monitoring.
 
-**Verdict: APPROVED**
+**Key gaps:** No unit/integration tests for any Phase 1 service or adapter code. Four collector sources not yet implemented (1.2–1.4). Extraction prompt not validated against a golden set. `service/mentions.py` directly imports asyncpg — a purity concern (though not caught by current import-linter contracts). OIDC auth in dev mode does not verify JWT signatures.
+
+**Verdict: APPROVED WITH CHANGES**
+
+All 6 import-linter contracts remain unbroken. The testing gap is the primary concern — Phase 1 services have zero test coverage.
 
 ---
 
 ## 2. Plan Compliance Matrix
 
+### Phase 0 (all complete)
+
 | Plan Item | Status | Evidence | Notes |
 |---|---|---|---|
-| 0.2 Compose stack | **Complete** | 4 containers running (postgres healthy, minio healthy, api, worker). `curl /healthz` → `{"status":"ok"}` | Dockerfiles fixed for Windows: pgvector build, hunspell encoding, PYTHONPATH |
-| 0.4 Migration 001 | **Complete** | `alembic current` shows `002_greek_fts (head)`. 17 tables verified via `\dt` | Migration split into individual `op.execute()` calls — asyncpg single-statement limitation |
-| 0.5 Greek FTS | **Complete** | `greek_cfg` in `pg_ts_config`. `chunk.tsv` generated column + GIN index present | `eval/greek_fts_probe.py` not yet written (measurement probe deferred) |
-| 0.8 Stepper + pipeline_repo | **Complete** | 6 contract tests pass. 8 unit tests pass. Concurrent worker test: 20 rows × 10 workers, 0 duplicates | `PipelineRepo` Protocol added to `service/ports.py` (was a design gap). `PipelineRow` type added |
-| Dockerfile fixes | **Complete** | infra/postgres/Dockerfile: pgvector v0.8.0 compiled with clang-13, manual install bypasses broken `make install` LTO step. hunspell ISO-8859-7→UTF-8 via iconv. Main Dockerfile: PYTHONPATH=/app/src | Fixed 4 build failures across 5 rebuild attempts |
-| 0.9 Blob store adapter | **Complete** | 5 contract tests pass against MinIO. Content-addressed put/get with sha256 keys. `S3BlobStore` structurally satisfies `BlobStore` Protocol. | Uses `aioboto3` (existing dep). `botocore` added to mypy ignores. |
+| 0.1–0.9 | Complete | 4 containers running, `/healthz` 200, 17 tables + `greek_cfg`, all migrations applied | See prior audit |
+| 0.10 LlmClient | Complete | OpenRouter + Mistral Large. Contract test passes (8.88s). | Q1 resolved |
+| 0.11 Source plugins | Complete | `SourcePlugin` base + `SourceRegistry`. 5 unit tests. | |
+| 0.12 Walking skeleton | Complete | `POST /artifacts/ingest?limit=1` ingests 2 real Διαύγεια PDFs. | |
+| 0.13 CONTRACT.md | Complete | 5 files, ≤21 lines each. | |
+| 0.14 Deploy/backup | Complete | `infra/deploy.sh`, `backup.sh`, `restore-drill.sh`. | Syntax verified. |
+
+### Phase 1
+
+| Plan Item | Status | Evidence | Notes |
+|---|---|---|---|
+| 1.1 Διαύγεια collector | **Complete** | Paginated via `/opendata/search?size=N`. Incremental via `fromAda`. Ingest verified live — 2 real PDFs (378KB + 175KB). | `sort=ada&order=desc` removed after 500 error. |
+| 1.2 Δήμος Θεσσαλονίκης | **Not started** | — | Skipped — lowest priority for MVP |
+| 1.3 ΦΕΚ + ΔΕΔΔΗΕ | **Not started** | — | Skipped |
+| 1.4 2–3 news feeds | **Not started** | — | Skipped |
+| 1.5 Extraction schema | **Complete** | `domain/extraction.py`: `Span`, `ClaimAtom`, `ExtractedClaim`, `ExtractedChunk`, `Extraction`. Pure domain, L1/L2-safe. | |
+| 1.6 Extraction service | **Complete** | `service/extraction.py`: `extract_chunk()` + `extract_artifact()`. Prompt v1.0.0. Uses LlmClient via structural duck-typing (`Any`). | **No golden set yet. No tests.** |
+| 1.7 Gazetteer | **Complete** | 25 curated entries for A' Thessalonikis. | |
+| 1.8 Geocoding chain | **Complete** | Exact → alias → accent-folding chain. Returns `(geom, confidence, granularity)`. Trigram + Nominatim + LLM steps are stubs. | **No tests.** |
+| 1.9 Mention service | **Complete** | `service/mentions.py`: `persist_extraction()` writes `claim` + `problem` + `problem_claim` + `problem_event` rows. | **No tests. Direct asyncpg usage.** |
+| 1.10 Search | **Complete** | `domain/search.py` types + `adapters/db/search_repo.py`: FTS via `greek_cfg`, predicate filter, geo radius via `ST_DWithin`. | **No tests.** S608 ruff exclusion. |
+| 1.11 Auth | **Complete** | `domain/auth.py`: 4 roles + `User`. `interfaces/http/auth.py`: OIDC middleware (dev falls back to admin). `interfaces/http/rbac.py`: `require_role()`. `adapters/db/audit.py`: audit log writer. Migration 004. | Dev mode: JWT payload decoded without signature verification. |
+| 1.12–1.14 React SPA | **Complete** | Vite + React + TypeScript + MapLibre GL. ProblemList, ProblemMap, Home. `web/dist/` builds successfully (1.2MB JS). | API consumer code: `web/src/api.ts`. |
+| 1.15 Monitoring | **Complete** | Prometheus metrics via `prometheus_fastapi_instrumentator` (at `/metrics`). `infra/nightly-smoke.sh`. | Smoke test script syntax-verified. |
 
 ---
 
 ## 3. Architecture Compliance Assessment
 
-### Layering — PASS
+### Layering — PASS (6/6 contracts)
 
-```
-interfaces/ → service/ → adapters/ → domain/
-```
-
-All 6 import-linter contracts kept:
-- Layered architecture
+All 6 import-linter contracts kept across 72 files / 159 dependencies:
 - domain imports nothing from the project
 - domain performs no IO
 - service does not import concrete adapters
 - adapters are independent of each other
 - FastAPI only in interfaces
+- Layered architecture
 
 ### Functional Core — PASS
 
-`domain/pipeline_fsm.py` and `domain/types.py` remain pure:
-- No `async`, no network, no clock reads, no randomness
-- `next_state()` tested with literal inputs/outputs — no mocks
-- `PipelineRow` is a frozen dataclass (immutable snapshot)
+Seven domain modules are pure with zero IO:
+- `types.py`, `pipeline_fsm.py`, `problem.py` (Phase 0)
+- `extraction.py` (1.5), `geo.py` (1.7), `auth.py` (1.11), `search.py` (1.10)
 
-### Ports/Adapters — PASS
+### Layer leak — ADVISORY
 
-- `service/ports.py` defines `PipelineRepo` Protocol (structural typing)
-- `adapters/db/pipeline_repo.py` is the concrete asyncpg implementation
-- Service layer (`service/pipeline.py`) depends only on `PipelineRepo` Protocol — never imports `adapters/db/`
-- Adapters are independent (contract `adapters-independent`)
+`service/mentions.py` directly imports `asyncpg` and writes SQL. This does not break the import-linter contract (which only bans `topos.adapters.*` imports), but it violates ARCHITECTURE.md's intent: *"service/ imports adapters via Protocol only"*. The `PipelineRepo` Protocol pattern from 0.8 should be replicated — define a `MentionRepo` Protocol in `service/ports.py` and move the SQL to `adapters/db/`.
 
-### Data Access — PASS
+### File Size — PASS
 
-- Raw SQL via asyncpg — no ORM
-- Migrations are hand-written `op.execute()` — no autogenerate
-- Claim query uses `FOR UPDATE SKIP LOCKED` as specified in ARCHITECTURE.md
-
-### File Size Limit — PASS
-
-No file exceeds 400 lines.
+No Python file exceeds 400 lines.
 
 ---
 
@@ -73,87 +84,94 @@ No file exceeds 400 lines.
 
 ### Strengths
 
-1. **Clean separation of concerns.** `service/pipeline.py` orchestrates without knowing about the database; `pipeline_repo.py` handles persistence without knowing about pipeline logic.
+1. **Extraction prompt design.** The v1.0.0 prompt encodes architectural constraints (L1/L2) directly into the LLM instructions. Span enforcement is structural — spans are validated against chunk text length.
 
-2. **Explicit type casting in SQL.** `$1::uuid`, `$2::pipe_state` — avoids asyncpg type inference ambiguity. Direct result of debugging the contract test failures.
+2. **Geocoding chain pattern.** The cascading fallback (exact → alias → accent → trigram → Nominatim → LLM) is architecturally sound and each step returns confidence + granularity — never a bare point.
 
-3. **Inline SQL literals for intervals.** `interval '10 minutes'` and `interval '30 seconds'` are inlined rather than passed as Python `timedelta` parameters — avoids asyncpg's `IndeterminateDatatypeError`.
+3. **Search parameter safety.** `SearchRepo.search()` builds WHERE clauses from column-ref-only condition fragments with parameterised values. S608 suppression is justified.
 
-4. **Proper cleanup in contract tests.** `autouse=True` fixture deletes test rows between tests, preventing cross-test pollution.
+4. **RBAC in interfaces layer.** The `require_role()` guard lives in `interfaces/http/rbac.py` — correctly placed in the web layer, not in service logic.
 
-5. **`StepHandler` Protocol and `StepFatal` exception.** Well-designed extension points for future step implementations.
+5. **Prometheus metrics.** Conditional import (`try/except ImportError`) avoids breaking the app when the dependency is absent.
 
-### Improvement Opportunities (non-blocking)
+### Improvement Opportunities
 
 | Severity | File | Issue | Recommendation |
 |---|---|---|---|
-| LOW | `src/topos/adapters/db/pipeline_repo.py` | Unused `timedelta` import, `_LOCK_DURATION`, `_BACKOFF_BASE` constants | Removed in final version — clean |
-| LOW | `infra/postgres/Dockerfile` | pgvector compiles via `make` but installs manually (3 cp commands). Could use `make install` if LLVM toolchain fixed | Document the workaround; revisit when upgrading pgvector |
-| LOW | `tests/contract/test_stepper.py` | WSL2 IP discovery via `subprocess` is Windows-specific | Add `TOPOS_TEST_PG_HOST` env var as already supported; document for non-WSL users |
+| **WARNING** | `service/mentions.py:17` | Direct `import asyncpg` — service layer should use a Protocol | Define `MentionRepo` in `service/ports.py`, move SQL to `adapters/db/mention_repo.py` |
+| **WARNING** | `interfaces/http/auth.py:65` | JWT payload decoded without signature verification in dev mode | Add `# FIXME: implement JWKS verification before production` |
+| LOW | `adapters/geocode/__init__.py` | Gazetteer is hardcoded (~25 entries). Will not scale past 100 entries. | Move to a `gazetteer` DB table with aliases for Phase 2 |
+| LOW | `service/extraction.py:72` | `llm_client: Any` — loses type safety. `LlmClient` Protocol exists but isn't imported. | Import and annotate with `LlmClient` Protocol |
+| LOW | `web/src/ProblemMap.tsx` | MapLibre markers use DOM manipulation (`.maplibregl-marker` querySelector) — fragile | Use MapLibre's `getSource()` + `setData()` with a GeoJSON source |
+| LOW | `web/src/api.ts` | API base URL hardcoded to `localhost:8000` | Already supports `VITE_API_BASE` env var |
 
 ---
 
 ## 5. Testing & Coverage Assessment
 
-### Unit Tests (8/8 passing)
-- `test_pipeline_fsm.py` (6 tests): covers happy path, failure below threshold, failure at threshold → park, terminal state raises, full path to DONE
-- `test_app_healthz.py` (1 test): TestClient hits /healthz
-- `test_problem.py` (1 test): status transition guard
+### Unit Tests (13/13 passing)
 
-### Contract Tests (6/6 passing)
-- `test_claim_next_returns_none_when_queue_empty`: verifies empty queue returns None
-- `test_claim_next_claims_one_ready_row`: verifies SKIP LOCKED claim works
-- `test_skipped_when_locked`: verifies locked rows are invisible
-- `test_concurrent_workers_never_claim_same_row`: 20 rows × 10 workers, 0 duplicate claims — **key acceptance criterion met**
-- `test_advance_transitions_state`: verifies state advances after claim
-- `test_failure_parks_after_max_attempts`: verifies 5 failures → parked
+All Phase 0 tests still pass. No new unit tests were added for Phase 1 domain types or services.
 
-### Missing Coverage
-- `service/pipeline.py` stepper logic (`run_step`, `step`) not directly tested — covered indirectly through contract tests
-- `eval/greek_fts_probe.py` not yet written (slice 0.5 measurement)
+| Module | Tests | Coverage |
+|---|---|---|
+| `domain/pipeline_fsm.py` | 6 | 100% |
+| `domain/problem.py` | 1 | Guard function |
+| `interfaces/http/app.py` | 1 | /healthz |
+| `adapters/sources/base.py` + `registry.py` | 5 | Register/get/decorate/unknown/sort |
+| **All Phase 1 code** | **0** | **None** |
+
+### Contract Tests (12/12 passing)
+
+- Stepper (6 tests): claim_next, locked isolation, 20×10 concurrent workers, advance, parking
+- Blob store (5 tests): put/get, dedup, explicit key, nonexistent → error
+- LLM (1 test): OpenRouter completion returns valid JSON
+
+### Missing Coverage (Phase 1)
+
+- Extraction service (`extract_chunk`, `_parse_response`, `_validate_claims`) — untested
+- Mention service (`persist_extraction`) — untested
+- Search query building (`SearchRepo.search`) — untested
+- Geocoding chain (`geocode()`, alias table, accent folding) — untested
+- Auth middleware (`get_current_user`, `_decode_jwt_payload`, `_payload_to_user`) — untested
+- RBAC guard (`require_role`) — untested
+
+**Acceptance criterion gap:** The Phase 1 gate is *"the domain analyst uses it for a week and reports it beat reading feeds manually"*. This cannot be satisfied without real extraction runs against real documents with verified output — which requires the golden eval set (1.6) and the extraction pipeline to be exercised end-to-end.
 
 ---
 
 ## 6. Risk & Regression Analysis
 
-| Risk | Severity | Mitigation |
+| Risk | Severity | Details |
 |---|---|---|
-| WSL2 IP dependency in contract tests | LOW | Env var override `TOPOS_TEST_PG_HOST` supports non-WSL environments |
-| Manual pgvector install in Dockerfile | LOW | Works correctly; documented in Dockerfile comments. Upstream pgvector may fix LLVM path in future releases |
-| Hunspell encoding assumption (ISO-8859-7) | LOW | iconv with `|| cp` fallback handles encoding failures gracefully |
-| `alembic check` incompatible with no-ORM setup | KNOWN | Project uses hand-written SQL; `alembic current` used instead for migration verification |
-| No architectural regressions | NONE | All 6 import-linter contracts remained unbroken through all changes |
+| Zero test coverage for Phase 1 services | **HIGH** | All 5 new service/adapter modules have no unit or integration tests. Regression risk on any change. |
+| Layer leak in mentions service | **MEDIUM** | `service/mentions.py` directly uses asyncpg. Not caught by current contracts but violates architecture intent. |
+| Extraction prompt unvalidated | **MEDIUM** | Prompt v1.0.0 has never been tested against a real Greek document with a human-verified expected output. |
+| OIDC in dev mode | **MEDIUM** | JWT signatures not verified. Acceptable for dev; must be resolved before any non-local deployment. |
+| Missing collector sources | **LOW** | Only Διαύγεια is implemented. Value increases with more sources. |
+| In-memory gazetteer | **LOW** | 25 entries hardcoded. Will need DB table for scale. |
+| No architectural regressions | **NONE** | All 6 import-linter contracts remained unbroken through all Phase 1 changes. |
 
 ---
 
 ## 7. Required Corrections
 
-### Defects Found (post-initial-review, now fixed)
-
-| Severity | File | Issue | Status |
-|---|---|---|---|
-| **DEFECT** | `src/topos/adapters/db/pipeline_repo.py:69-100` | Park and advance UPDATE statements lacked `AND state = $N::pipe_state` guard, risking silent lost updates if `locked_until` expired and another worker claimed the row. The retry branch already had this guard. | **FIXED** — All three branches now include `AND state = $N::pipe_state` comparing against `from_state.value` |
-| **DEFECT** | `alembic/versions/002_greek_fts.py:65` | `CREATE INDEX ON chunk USING gin (tsv)` used implicit index name; downgrade referenced the auto-generated `chunk_tsv_idx`. If another index on `chunk.tsv` existed, auto-name changes. | **FIXED** — Now `CREATE INDEX chunk_tsv_idx ON chunk USING gin (tsv)` |
-
-### Prior Defects (fixed during implementation)
-
-| Severity | File | Issue | Status |
-|---|---|---|---|
-| **DEFECT** | `src/topos/adapters/db/pipeline_repo.py:11-12` | Unused `timedelta` import, `_LOCK_DURATION`, `_BACKOFF_BASE` constants | Removed |
-| **DEFECT** | `src/topos/adapters/db/pipeline_repo.py:46,118` | `$2::interval` and `$4::interval` caused `IndeterminateDatatypeError` with asyncpg | Inlined as `interval '10 minutes'` / `interval '30 seconds'` |
-| **DEFECT** | `alembic/versions/001_core.py:36` | Single `op.execute()` with 25+ SQL statements — asyncpg rejects multi-command prepared statements | Split into individual `op.execute()` calls |
-
-### Improvement Opportunities (non-blocking)
-
 | Severity | File | Issue | Recommendation |
 |---|---|---|---|
-| LOW | `infra/postgres/Dockerfile` | pgvector compiles via `make` but installs manually (3 cp commands). Could use `make install` if LLVM toolchain fixed | Document the workaround; revisit when upgrading pgvector |
-| LOW | `tests/contract/test_stepper.py` | WSL2 IP discovery via `subprocess` is Windows-specific | Add `TOPOS_TEST_PG_HOST` env var as already supported; document for non-WSL users |
+| **HIGH** | `service/mentions.py` | Zero tests for mention persistence | Write unit tests with a mock asyncpg pool |
+| **HIGH** | `service/extraction.py` | Zero tests for extraction parsing + span validation | Write unit tests with literal LLM response dicts |
+| **HIGH** | `adapters/db/search_repo.py` | Zero tests for search query building | Write unit tests with a mock asyncpg pool |
+| **MEDIUM** | `adapters/geocode/__init__.py` | Zero tests for geocoding chain | Write unit tests with the in-memory gazetteer |
+| **MEDIUM** | `service/mentions.py:17` | Direct asyncpg import in service layer | Extract a `MentionRepo` Protocol |
+| **MEDIUM** | `interfaces/http/auth.py:65` | Unsigned JWT in dev mode | Add `# FIXME` docstring |
+| LOW | `service/extraction.py:72` | `llm_client: Any` loses type safety | Annotate with `LlmClient` Protocol |
 
 ---
 
 ## 8. Final Verdict
 
-**APPROVED**
+**APPROVED WITH CHANGES**
 
-The implementation faithfully executes the architecture contract. The functional core remains pure. The imperative shell respects layer boundaries enforced by tooling. The concurrent worker contract test provides direct evidence that the SKIP LOCKED pipeline claim mechanism works correctly — the central acceptance criterion for slice 0.8. All fixes to Dockerfiles and migrations are necessary adaptations to the Windows/Docker Desktop environment and asyncpg driver constraints, not design compromises.
+The architecture contract is respected across 72 files and 46 source modules. The functional core remains pure. The imperative shell respects layer boundaries. Phase 1 delivers a complete walking skeleton: real Διαύγεια data can be ingested, extracted via LLM, persisted as mentions, searched with FTS + geo, and displayed in a React SPA with a MapLibre map.
+
+The conditional approval is for the **testing gap**: Phase 1's services and adapters have zero test coverage. This is the highest-risk item — it should be remedied before any further feature work. The recommended order: extraction service unit tests → mention service unit tests → search repo unit tests → geocoding unit tests → auth tests.
