@@ -28,7 +28,20 @@ class BlobStore(Protocol):
 class LlmClient(Protocol):
     """See ARCHITECTURE.md > LLM usage. Implemented by adapters.llm (slice 0.10)."""
 
-    async def complete(self, *, prompt: str, model: str, schema: type) -> object: ...
+    async def complete(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        schema: type,
+        response_format: dict[str, object] | None = None,
+    ) -> object:
+        """Send a completion request.
+
+        *schema* is a Pydantic model for structured output validation.
+        *response_format* can be ``{"type": "json_object"}`` if the provider
+        supports it separately from schema validation.
+        """
 
 
 class PipelineRepo(Protocol):
