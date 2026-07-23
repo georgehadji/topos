@@ -73,7 +73,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "PLR2004", "ARG"]
+"tests/**" = ["S", "PLR2004", "ARG", "E501"]
 "alembic/**" = ["E501"]
 "src/topos/adapters/sources/base.py" = ["ARG002"]
 "src/topos/adapters/db/search_repo.py" = ["S608"]

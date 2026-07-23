@@ -113,7 +113,7 @@ def _parse_response(result: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _validate_claims(
-    raw: list[dict[str, Any]], chunk_text: str
+    raw: list[Any], chunk_text: str
 ) -> list[ExtractedClaim]:
     """Validate raw LLM output into ExtractedClaim objects.
 
@@ -123,6 +123,8 @@ def _validate_claims(
     text_len = len(chunk_text)
 
     for item in raw:
+        if not isinstance(item, dict):
+            continue
         predicate = item.get("predicate", "")
         value = item.get("value", "")
         span_start = item.get("span_start", item.get("start"))
