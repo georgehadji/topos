@@ -89,7 +89,7 @@ def _token_overlap_ratio(text_a: str, text_b: str) -> float:
         return 0.0
     intersection = tokens_a & tokens_b
     union = tokens_a | tokens_b
-    return len(intersection) / len(union)  # type: ignore[no-any-return]
+    return float(len(intersection)) / float(len(union))
 
 
 def _geo_proximity(
@@ -114,7 +114,7 @@ def _geo_proximity(
     dist_km = (dlat ** 2 + dlon ** 2) ** 0.5
 
     # Normalize: 0km → 1.0, 5km → 0.0
-    return max(0.0, 1.0 - dist_km / 5.0)
+    return float(max(0.0, 1.0 - dist_km / 5.0))
 
 
 def er_decision(
