@@ -1,15 +1,17 @@
-"""Διαύγεια source plugin.
+"""Διαύγεια source plugin — paginated + incremental.
 
 Fetches decisions from the Greek Government Transparency Portal
-(diavgeia.gov.gr). Implements SourcePlugin.
+(diavgeia.gov.gr). Paginates through all pages and supports
+incremental fetch by tracking ``last_ada`` in source config.
 
-Διαύγεια API: https://diavgeia.gov.gr/opendata/search
-No auth key needed.
+Διαύγεια v2 API: https://diavgeia.gov.gr/opendata/search
+Document download: /luminapi/api/decisions/{ada}/document
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -20,16 +22,33 @@ from topos.adapters.sources.registry import register
 
 
 class DiavgeiaConfig(BaseModel):
-    """Config stored in source.config jsonb."""
+    """Config stored in source.config jsonb.
+
+    ``last_ada`` tracks the last fetched ADA so subsequent runs
+    only fetch newer decisions. Set to ``""`` to force a full backfill.
+    """
 
     base_url: str = "https://diavgeia.gov.gr/opendata"
-    max_per_fetch: int = 5
+    page_size: int = 50
     org: str = ""
+    last_ada: str = ""
+    max_pages: int = 0  # 0 = unlimited
+
+
+_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "Topos/0.1 (constituency intelligence; contact@topos.local)",
+}
 
 
 @register
 class DiavgeiaPlugin(SourcePlugin):
-    """Plugin for diavgeia.gov.gr — Greek government decisions."""
+    """Plugin for diavgeia.gov.gr — Greek government decisions.
+
+    Paginates through ``/opendata/search``, yields PDF artifacts.
+    Incremental: set ``source.config->>'last_ada'`` to the last ADA
+    fetched; the plugin uses ``fromAda`` param to skip older items.
+    """
 
     kind = "diavgeia"
     config_model = DiavgeiaConfig
@@ -38,48 +57,101 @@ class DiavgeiaPlugin(SourcePlugin):
         self, config: BaseModel
     ) -> AsyncIterator[PluginArtifact]:
         cfg = DiavgeiaConfig.model_validate(config)
-        params: dict[str, str] = {
-            "size": str(cfg.max_per_fetch),
-            "sort": "ada",
-            "order": "desc",
-        }
-        if cfg.org:
-            params["org"] = cfg.org
+        seen = 0
+        page = 0
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{cfg.base_url}/search",
-                params=params,
-                headers={"Accept": "application/json"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            while True:
+                # Build paginated request
+                params: dict[str, str] = {
+                    "size": str(cfg.page_size),
+                    "sort": "ada",
+                    "order": "desc",
+                }
+                if cfg.org:
+                    params["org"] = cfg.org
+                if cfg.last_ada:
+                    params["fromAda"] = cfg.last_ada
 
-        decisions = _extract_decisions(data)
-        for item in decisions:
-            ada = item.get("ada", "")
-            if not ada:
-                continue
-
-            doc_url = item.get("documentUrl", "") or item.get("url", "")
-            # Διαύγεια v2: document download via luminapi
-            pdf_url = f"https://diavgeia.gov.gr/luminapi/api/decisions/{ada}/document"
-
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client2:
-                pdf_resp = await client2.get(pdf_url)
-                pdf_resp.raise_for_status()
-                yield PluginArtifact(
-                    uri=f"diavgeia://{ada}",
-                    data=pdf_resp.content,
-                    mime=pdf_resp.headers.get("content-type", "application/pdf"),
-                    meta={
-                        "ada": ada,
-                        "subject": item.get("subject", ""),
-                        "organization": item.get("organization", ""),
-                        "decisionType": item.get("decisionType", ""),
-                        "url": doc_url,
-                    },
+                resp = await client.get(
+                    f"{cfg.base_url}/search",
+                    params=params,
+                    headers=_HEADERS,
                 )
+                resp.raise_for_status()
+                data = resp.json()
+                decisions = _extract_decisions(data)
+
+                if not decisions:
+                    break  # no more results
+
+                for item in decisions:
+                    ada = item.get("ada", "")
+                    if not ada:
+                        continue
+
+                    # Stop if we hit the last_ada boundary
+                    if cfg.last_ada and ada <= cfg.last_ada:
+                        return
+
+                    # Download the actual PDF
+                    pdf_url = (
+                        f"https://diavgeia.gov.gr/luminapi"
+                        f"/api/decisions/{ada}/document"
+                    )
+                    try:
+                        pdf_resp = await client.get(pdf_url)
+                        pdf_resp.raise_for_status()
+                    except httpx.HTTPStatusError:
+                        # Skip documents that fail download
+                        continue
+
+                    yield PluginArtifact(
+                        uri=f"diavgeia://{ada}",
+                        data=pdf_resp.content,
+                        mime=pdf_resp.headers.get(
+                            "content-type", "application/pdf"
+                        ),
+                        meta={
+                            "ada": ada,
+                            "subject": item.get("subject", ""),
+                            "organization": item.get("organization", ""),
+                            "decisionType": item.get("decisionType", ""),
+                            "protocolNumber": item.get("protocolNumber", ""),
+                            "issueDate": _parse_ts(item.get("issueDate")),
+                            "url": (
+                                item.get("documentUrl", "")
+                                or item.get("url", "")
+                            ),
+                        },
+                    )
+                    seen += 1
+                    # Track last ADA for progress
+                    cfg.last_ada = ada
+
+                page += 1
+                if cfg.max_pages > 0 and page >= cfg.max_pages:
+                    break
+
+                # Check if there are more pages (the API returns fewer than
+                # page_size means we're done)
+                if len(decisions) < cfg.page_size:
+                    break
+
+    @property
+    def last_ada(self) -> str:
+        """The last ADA fetched in the most recent run."""
+        return self._last_ada if hasattr(self, "_last_ada") else ""
+
+
+def _parse_ts(ts: int | None) -> str | None:
+    """Convert a JS-style epoch-millis timestamp to ISO string, or None."""
+    if ts is None:
+        return None
+    try:
+        return datetime.fromtimestamp(ts / 1000, tz=UTC).isoformat()
+    except (ValueError, OSError):
+        return None
 
 
 def _extract_decisions(data: Any) -> list[dict[str, Any]]:
