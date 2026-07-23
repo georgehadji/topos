@@ -23,6 +23,7 @@ All implemented slices follow the project architecture contract (ARCHITECTURE.md
 | 0.5 Greek FTS | **Complete** | `greek_cfg` in `pg_ts_config`. `chunk.tsv` generated column + GIN index present | `eval/greek_fts_probe.py` not yet written (measurement probe deferred) |
 | 0.8 Stepper + pipeline_repo | **Complete** | 6 contract tests pass. 8 unit tests pass. Concurrent worker test: 20 rows × 10 workers, 0 duplicates | `PipelineRepo` Protocol added to `service/ports.py` (was a design gap). `PipelineRow` type added |
 | Dockerfile fixes | **Complete** | infra/postgres/Dockerfile: pgvector v0.8.0 compiled with clang-13, manual install bypasses broken `make install` LTO step. hunspell ISO-8859-7→UTF-8 via iconv. Main Dockerfile: PYTHONPATH=/app/src | Fixed 4 build failures across 5 rebuild attempts |
+| 0.9 Blob store adapter | **Complete** | 5 contract tests pass against MinIO. Content-addressed put/get with sha256 keys. `S3BlobStore` structurally satisfies `BlobStore` Protocol. | Uses `aioboto3` (existing dep). `botocore` added to mypy ignores. |
 
 ---
 
