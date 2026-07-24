@@ -83,6 +83,8 @@ ignore = [
 "src/topos/mcp/*" = ["PLC0415", "PLW2901", "E501"]
 "src/topos/interfaces/http/graphql_schema.py" = ["PLC0415", "ARG002"]
 "src/topos/interfaces/http/webhooks.py" = ["SIM105"]
+"src/topos/adapters/stt/*" = ["PLC0415", "ASYNC240"]
+"src/topos/service/backfill.py" = ["PLC0415", "T201"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "datetime.datetime.utcnow".msg = "Naive UTC is banned. Use datetime.now(UTC)."
