@@ -1,3 +1,4 @@
+import ReviewPage from "./ReviewPage";
 import { Routes, Route, Link } from "react-router-dom";
 import ProblemList from "./ProblemList";
 import ProblemMap from "./ProblemMap";
@@ -42,9 +43,11 @@ export default function App() {
     <div style={{ maxWidth: "960px", margin: "0 auto", padding: "1rem" }}>
       <nav style={{ marginBottom: "1rem", display: "flex", gap: "1rem" }}>
         <Link to="/">Home</Link>
+        <Link to="/review">Review</Link>
       </nav>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/review" element={<ReviewPage />} />
       </Routes>
     </div>
   );
