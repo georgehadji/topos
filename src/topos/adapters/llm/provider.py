@@ -45,7 +45,7 @@ class OpenRouterProvider:
         if response_format:
             body["response_format"] = response_format
 
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=10.0)) as client:
             resp = await client.post(
                 f"{self._base_url}/chat/completions",
                 headers={
