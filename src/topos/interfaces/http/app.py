@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from topos.config import get_settings
 from topos.interfaces.http.artifacts import router as artifacts_router
 from topos.interfaces.http.graph import router as graph_router
+from topos.interfaces.http.recommendations import router as recommendations_router
 from topos.interfaces.http.review import router as review_router
 from topos.interfaces.http.search import router as search_router
 from topos.telemetry import configure_logging
@@ -35,6 +36,7 @@ except ImportError:
 
 app.include_router(graph_router)
 app.include_router(artifacts_router)
+app.include_router(recommendations_router)
 app.include_router(search_router)
 app.include_router(review_router)
 
