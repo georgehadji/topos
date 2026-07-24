@@ -22,6 +22,7 @@ dependencies = [
   "prometheus-client>=0.21",
   "opentelemetry-sdk>=1.28",
   "opentelemetry-instrumentation-fastapi>=0.49b0",
+  "strawberry-graphql>=0.323.2",
 ]
 
 [dependency-groups]
@@ -78,6 +79,9 @@ ignore = [
 "src/topos/adapters/sources/base.py" = ["ARG002"]
 "src/topos/adapters/db/search_repo.py" = ["S608"]
 "src/topos/service/recommendations.py" = ["S608", "ARG002"]
+"src/topos/mcp/*" = ["PLC0415", "PLW2901", "E501"]
+"src/topos/interfaces/http/graphql_schema.py" = ["PLC0415", "ARG002"]
+"src/topos/interfaces/http/webhooks.py" = ["SIM105"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "datetime.datetime.utcnow".msg = "Naive UTC is banned. Use datetime.now(UTC)."

@@ -10,9 +10,11 @@ from fastapi.staticfiles import StaticFiles
 from topos.config import get_settings
 from topos.interfaces.http.artifacts import router as artifacts_router
 from topos.interfaces.http.graph import router as graph_router
+from topos.interfaces.http.graphql_schema import graphql_router as graphql_gql_router
 from topos.interfaces.http.recommendations import router as recommendations_router
 from topos.interfaces.http.review import router as review_router
 from topos.interfaces.http.search import router as search_router
+from topos.interfaces.http.webhooks import router as webhooks_router
 from topos.telemetry import configure_logging
 
 settings = get_settings()
@@ -39,6 +41,8 @@ app.include_router(artifacts_router)
 app.include_router(recommendations_router)
 app.include_router(search_router)
 app.include_router(review_router)
+app.include_router(graphql_gql_router, prefix="/graphql")
+app.include_router(webhooks_router)
 
 # Mount built React SPA if available (must be last — catches all paths)
 _web_dist = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "web", "dist")
