@@ -1,3 +1,4 @@
+import GraphExplorer from "./GraphExplorer";
 import ReviewPage from "./ReviewPage";
 import { Routes, Route, Link } from "react-router-dom";
 import ProblemList from "./ProblemList";
@@ -44,10 +45,12 @@ export default function App() {
       <nav style={{ marginBottom: "1rem", display: "flex", gap: "1rem" }}>
         <Link to="/">Home</Link>
         <Link to="/review">Review</Link>
+        <Link to="/graph">Graph</Link>
       </nav>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/review" element={<ReviewPage />} />
+        <Route path="/graph" element={<GraphExplorer />} />
       </Routes>
     </div>
   );
