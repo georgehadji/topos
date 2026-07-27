@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from topos.config import get_settings
@@ -21,6 +22,15 @@ settings = get_settings()
 configure_logging(settings.log_level)
 
 app = FastAPI(title="Topos", version="0.1.0")
+
+# Enable CORS for local React/Vite development server (port 5173)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all during development to ensure zero local connection friction
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/healthz")
