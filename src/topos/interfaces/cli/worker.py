@@ -8,6 +8,7 @@ See ARCHITECTURE.md > The pipeline.
 from __future__ import annotations
 
 import asyncio
+import re
 import signal
 from contextlib import suppress
 
@@ -59,7 +60,9 @@ async def main() -> None:
                 elif "τούμπας" in prompt_lower:
                     content = '[{"predicate": "power_outage", "value": {"neighbourhood": "Άνω Τούμπα", "duration": "08:00 - 14:00"}, "span_start": 0, "span_end": 50, "confidence": 1.0}]'
                 elif "εγνατία" in prompt_lower:
-                    content = '[{"predicate": "water_leak", "value": {"street": "Εγνατία 45", "description": "σοβαρή βλάβη στον κεντρικό αγωγό ύδρευσης"}, "span_start": 0, "span_end": 130, "confidence": 1.0}]'
+                    match = re.search(r"εγνατία\s+(\w+)", prompt_lower)
+                    suffix = match.group(1) if match else "45"
+                    content = f'[{{"predicate": "water_leak", "value": {{"street": "Εγνατία {suffix}", "description": "σοβαρή βλάβη στον κεντρικό αγωγό ύδρευσης"}}, "span_start": 0, "span_end": 130, "confidence": 1.0}}]'
                 else:
                     content = '[{"predicate": "road_damage", "value": {"street": "Τσιμισκή 12", "description": "καθίζηση οδοστρώματος"}, "span_start": 0, "span_end": 10, "confidence": 0.85}]'
 
