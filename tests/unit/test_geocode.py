@@ -90,3 +90,23 @@ def test_accent_folding_code_points() -> None:
     without_accent = "\u03b8\u03b5\u03c3\u03c3\u03b1\u03bb\u03bf\u03bd\u03b9\u03ba\u03b7"
     result = with_accent.translate(accent_map)
     assert result == without_accent, f"{result!r} != {without_accent!r}"
+
+
+def test_geocoding_with_numbers_and_suffixes() -> None:
+    """Verify that streets with house numbers or alpha-numeric suffixes are geocoded successfully."""
+    # Egnatia 45
+    res1 = geocode("Εγνατία 45")
+    assert res1 is not None
+    assert res1.granularity == GeoGranularity.STREET
+    assert res1.label == "Οδός Εγνατία"
+
+    # Egnatia ac08
+    res2 = geocode("Εγνατία ac08")
+    assert res2 is not None
+    assert res2.granularity == GeoGranularity.STREET
+
+    # Tsimiski 12
+    res3 = geocode("Τσιμισκή 12")
+    assert res3 is not None
+    assert res3.granularity == GeoGranularity.STREET
+

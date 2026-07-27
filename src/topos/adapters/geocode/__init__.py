@@ -8,6 +8,8 @@ See ARCHITECTURE.md §Greek and §Repository layout.
 
 from __future__ import annotations
 
+import re
+
 from topos.domain.geo import GeocodeResult, GeoPoint
 from topos.domain.types import GeoGranularity
 
@@ -199,6 +201,10 @@ def geocode(toponym: str) -> GeocodeResult | None:
     Returns None if the toponym cannot be resolved.
     """
     cleaned = toponym.strip().lower()
+
+    # Normalize: strip trailing numbers or alphanumeric suffixes
+    # (e.g. "Εγνατία 45" -> "Εγνατία", "Εγνατία ac08" -> "Εγνατία")
+    cleaned = re.sub(r"\s+[\w\d]+$", "", cleaned).strip()
 
     # Step 1: exact match
     result = _exact_lookup(cleaned)
