@@ -92,12 +92,9 @@ async def generate_explanation(
         return ""
 
     try:
-        content = (
-            result.get("choices", [{}])
-            [0].get("message", {})
-            .get("content", "{}")
-        )
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")
         import json  # noqa: PLC0415
+
         parsed = json.loads(content)
         return str(parsed.get("explanation", ""))
     except (json.JSONDecodeError, KeyError, IndexError, TypeError):

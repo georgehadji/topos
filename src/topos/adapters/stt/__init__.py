@@ -135,9 +135,7 @@ async def ingest_audio(
     }
 
 
-def _chunk_text(
-    text: str, max_chars: int = 2000
-) -> list[tuple[int, int, str]]:
+def _chunk_text(text: str, max_chars: int = 2000) -> list[tuple[int, int, str]]:
     """Split text into chunks at sentence boundaries."""
     import re
 

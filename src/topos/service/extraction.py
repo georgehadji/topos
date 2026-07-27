@@ -23,44 +23,44 @@ from topos.domain.types import ArtifactId
 # Greek text uses Unicode characters that ruff flags as ambiguous.
 # This is intentional — "A' Thessalonikis" is a proper name.
 _PROMPT_TEMPLATE = (
-    'You are a policy analyst for the constituency of A\' Thessalonikis.\n'
-    'Your task is to read the following excerpt from a Greek public-sector'
-    ' document and extract ANY mention of a citizen-affecting problem.\n'
-    '\n'
+    "You are a policy analyst for the constituency of A' Thessalonikis.\n"
+    "Your task is to read the following excerpt from a Greek public-sector"
+    " document and extract ANY mention of a citizen-affecting problem.\n"
+    "\n"
     'A "problem" is something that negatively affects residents of the'
-    ' constituency:\n'
-    '  - Infrastructure issues (roads, water, electricity, public transport)\n'
-    '  - Health and safety hazards\n'
-    '  - Environmental problems (pollution, waste, green space)\n'
-    '  - Administrative issues (delays, missing services, bureaucratic'
-    ' failures)\n'
-    '  - Social issues (housing, education, access to services)\n'
-    '\n'
-    'Rules (ARCHITECTURE.md L1/L2):\n'
-    '  - DO NOT extract any natural person\'s name, ethnicity, religion,'
-    ' political opinion, health condition, or union membership.\n'
-    '  - DO NOT speculate or infer. Only extract what is explicitly stated.\n'
+    " constituency:\n"
+    "  - Infrastructure issues (roads, water, electricity, public transport)\n"
+    "  - Health and safety hazards\n"
+    "  - Environmental problems (pollution, waste, green space)\n"
+    "  - Administrative issues (delays, missing services, bureaucratic"
+    " failures)\n"
+    "  - Social issues (housing, education, access to services)\n"
+    "\n"
+    "Rules (ARCHITECTURE.md L1/L2):\n"
+    "  - DO NOT extract any natural person's name, ethnicity, religion,"
+    " political opinion, health condition, or union membership.\n"
+    "  - DO NOT speculate or infer. Only extract what is explicitly stated.\n"
     '  - An "authority" is an office or organization, never a person.\n'
-    '\n'
-    'For each problem mention, extract:\n'
+    "\n"
+    "For each problem mention, extract:\n"
     '  1. **predicate** \u2014 a short text key like "road_damage",'
     ' "water_leak", "air_pollution"\n'
-    '  2. **value** \u2014 a JSON value describing the problem'
-    ' (string, number, or object)\n'
-    '  3. **span_start** \u2014 the character offset where evidence'
-    ' for this claim begins\n'
-    '  4. **span_end** \u2014 the character offset where evidence ends\n'
-    '\n'
-    'If there are NO citizen-affecting problems in this text, return an'
-    ' empty JSON array.\n'
-    '\n'
-    'Respond ONLY with a JSON array. No explanation, no markdown,'
-    ' no preamble.\n'
-    '\n'
-    'Document excerpt:\n'
-    '---\n'
-    '{chunk_text}\n'
-    '---'
+    "  2. **value** \u2014 a JSON value describing the problem"
+    " (string, number, or object)\n"
+    "  3. **span_start** \u2014 the character offset where evidence"
+    " for this claim begins\n"
+    "  4. **span_end** \u2014 the character offset where evidence ends\n"
+    "\n"
+    "If there are NO citizen-affecting problems in this text, return an"
+    " empty JSON array.\n"
+    "\n"
+    "Respond ONLY with a JSON array. No explanation, no markdown,"
+    " no preamble.\n"
+    "\n"
+    "Document excerpt:\n"
+    "---\n"
+    "{chunk_text}\n"
+    "---"
 )
 
 
@@ -91,12 +91,7 @@ async def extract_chunk(
 def _parse_response(result: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract the JSON array from the LLM response."""
     try:
-        content = (
-            result.get("choices", [{}])
-            [0]
-            .get("message", {})
-            .get("content", "")
-        )
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         if not content:
             return []
         parsed = json.loads(content)
@@ -112,9 +107,7 @@ def _parse_response(result: dict[str, Any]) -> list[dict[str, Any]]:
         return []
 
 
-def _validate_claims(
-    raw: list[Any], chunk_text: str
-) -> list[ExtractedClaim]:
+def _validate_claims(raw: list[Any], chunk_text: str) -> list[ExtractedClaim]:
     """Validate raw LLM output into ExtractedClaim objects.
 
     Rejects claims with unresolvable spans (L5).

@@ -36,9 +36,7 @@ class NewsPlugin(SourcePlugin):
     kind = "news"
     config_model = NewsConfig
 
-    async def fetch(
-        self, config: BaseModel
-    ) -> AsyncIterator[PluginArtifact]:
+    async def fetch(self, config: BaseModel) -> AsyncIterator[PluginArtifact]:
         cfg = NewsConfig.model_validate(config)
 
         for feed_url in cfg.feeds:

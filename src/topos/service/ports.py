@@ -6,7 +6,9 @@ contract `service-ports-only`.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
+
+from pydantic import BaseModel
 
 from topos.domain.pipeline_fsm import StepOutcome
 from topos.domain.types import ArtifactId, PipelineRow, PipelineState
@@ -33,9 +35,9 @@ class LlmClient(Protocol):
         *,
         prompt: str,
         model: str,
-        schema: type,
+        schema: type[BaseModel] | None = None,
         response_format: dict[str, object] | None = None,
-    ) -> object:
+    ) -> Any:
         """Send a completion request.
 
         *schema* is a Pydantic model for structured output validation.

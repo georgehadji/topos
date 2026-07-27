@@ -11,6 +11,7 @@ import os
 import socket
 import subprocess
 import uuid
+from collections.abc import AsyncGenerator
 
 import asyncpg
 import pytest
@@ -27,7 +28,10 @@ def _find_pg_host() -> str:
     try:
         result = subprocess.run(
             ["wsl", "--", "ip", "-4", "addr", "show", "eth0"],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
         for line in result.stdout.splitlines():
             if "inet " in line:
@@ -71,14 +75,14 @@ async def _cleanup() -> None:
 
 
 @pytest.fixture
-async def conn() -> asyncpg.Connection:
+async def conn() -> AsyncGenerator[asyncpg.Connection, None]:
     c = await asyncpg.connect(DSN)
     yield c
     await c.close()
 
 
 @pytest.fixture
-async def repo(conn: asyncpg.Connection) -> PipelineRepo:
+async def repo(conn: asyncpg.Connection) -> AsyncGenerator[PipelineRepo, None]:
     pool = await asyncpg.create_pool(DSN, min_size=1, max_size=1)
     r = PipelineRepo(pool)
     yield r
@@ -117,9 +121,9 @@ async def _insert_pipeline(
     await conn.execute(
         """
         INSERT INTO pipeline (artifact_id, state, run_after)
-        VALUES ($1, $2::pipe_state, now())
+        VALUES ($1, $2::pipe_state, now() - interval '1 second')
         ON CONFLICT (artifact_id) DO UPDATE
-          SET state = $2::pipe_state, run_after = now(), locked_until = NULL, attempts = 0
+          SET state = $2::pipe_state, run_after = now() - interval '1 second', locked_until = NULL, attempts = 0
         """,
         artifact_id,
         state,
@@ -136,12 +140,10 @@ async def test_claim_next_returns_none_when_queue_empty(repo: PipelineRepo) -> N
 
 
 @pytest.mark.asyncio
-async def test_claim_next_claims_one_ready_row(
-    repo: PipelineRepo, conn: asyncpg.Connection
-) -> None:
+async def test_claim_next_claims_one_ready_row(repo: PipelineRepo) -> None:
     artifact_id = ArtifactId(uuid.uuid4())
-    await _insert_artifact(conn, artifact_id)
-    await _insert_pipeline(conn, artifact_id, state="fetched")
+    await _insert_artifact(repo._pool, artifact_id)
+    await _insert_pipeline(repo._pool, artifact_id, state="fetched")
 
     row = await repo.claim_next()
     assert row is not None
@@ -152,9 +154,7 @@ async def test_claim_next_claims_one_ready_row(
 
 
 @pytest.mark.asyncio
-async def test_skipped_when_locked(
-    repo: PipelineRepo, conn: asyncpg.Connection
-) -> None:
+async def test_skipped_when_locked(repo: PipelineRepo, conn: asyncpg.Connection) -> None:
     a1 = ArtifactId(uuid.uuid4())
     a2 = ArtifactId(uuid.uuid4())
 
@@ -169,9 +169,7 @@ async def test_skipped_when_locked(
 
     row2 = await repo.claim_next()
     if row2 is not None:
-        assert row2.artifact_id != claimed_id, (
-            f"SKIP LOCKED violated: both claims got {claimed_id}"
-        )
+        assert row2.artifact_id != claimed_id, f"SKIP LOCKED violated: both claims got {claimed_id}"
 
 
 @pytest.mark.asyncio
@@ -197,11 +195,13 @@ async def test_concurrent_workers_never_claim_same_row(
         while True:
             row = await repo.claim_next()
             if row is None:
-                return
+                async with lock:
+                    if len(claimed) >= N_ROWS:
+                        return
+                await asyncio.sleep(0.005)
+                continue
             async with lock:
-                assert row.artifact_id not in claimed, (
-                    f"DUPLICATE CLAIM: {row.artifact_id}"
-                )
+                assert row.artifact_id not in claimed, f"DUPLICATE CLAIM: {row.artifact_id}"
                 claimed.add(row.artifact_id)
 
     tasks = [asyncio.create_task(worker()) for _ in range(N_WORKERS)]
@@ -212,12 +212,11 @@ async def test_concurrent_workers_never_claim_same_row(
 
 
 @pytest.mark.asyncio
-async def test_advance_transitions_state(
-    repo: PipelineRepo, conn: asyncpg.Connection
-) -> None:
+async def test_advance_transitions_state(repo: PipelineRepo) -> None:
     artifact_id = ArtifactId(uuid.uuid4())
-    await _insert_artifact(conn, artifact_id)
-    await _insert_pipeline(conn, artifact_id, state="fetched")
+    # Use repo._pool instead of conn to ensure absolute transaction visibility
+    await _insert_artifact(repo._pool, artifact_id)
+    await _insert_pipeline(repo._pool, artifact_id, state="fetched")
 
     row = await repo.claim_next()
     assert row is not None
@@ -226,7 +225,7 @@ async def test_advance_transitions_state(
     outcome = StepOutcome(next_state=PipelineState.TEXTIFIED)
     await repo.advance(row.artifact_id, from_state=row.state, outcome=outcome)
 
-    updated = await conn.fetchrow(
+    updated = await repo._pool.fetchrow(
         "SELECT state, locked_until FROM pipeline WHERE artifact_id = $1::uuid",
         artifact_id,
     )

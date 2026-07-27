@@ -34,9 +34,7 @@ class KhmidhsPlugin(SourcePlugin):
     kind = "khmdhs"
     config_model = KhmidhsConfig
 
-    async def fetch(
-        self, config: BaseModel
-    ) -> AsyncIterator[PluginArtifact]:
+    async def fetch(self, config: BaseModel) -> AsyncIterator[PluginArtifact]:
         cfg = KhmidhsConfig.model_validate(config)
         page = 0
 
@@ -83,9 +81,7 @@ class KhmidhsPlugin(SourcePlugin):
                         continue
 
                     pdf_url = (
-                        item.get("documentUrl", "")
-                        or item.get("pdfUrl", "")
-                        or item.get("url", "")
+                        item.get("documentUrl", "") or item.get("pdfUrl", "") or item.get("url", "")
                     )
                     if not pdf_url:
                         continue

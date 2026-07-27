@@ -18,9 +18,7 @@ from topos.domain.types import ArtifactId
 class Telemetry:
     """Wraps a provider and records every call in extraction_run."""
 
-    def __init__(
-        self, inner: Any, pool: asyncpg.Pool | None = None
-    ) -> None:
+    def __init__(self, inner: Any, pool: asyncpg.Pool | None = None) -> None:
         self._inner = inner
         self._pool = pool
 
@@ -32,13 +30,14 @@ class Telemetry:
         response_format: dict[str, Any] | None = None,
         artifact_id: ArtifactId | None = None,
         prompt_ver: str = "0.0.0",
+        **kwargs: Any,
     ) -> dict[str, Any]:
         started = datetime.now(UTC)
         ok = True
         result: dict[str, Any] | None = None
         try:
             result = await self._inner.complete(
-                prompt=prompt, model=model, response_format=response_format
+                prompt=prompt, model=model, response_format=response_format, **kwargs
             )
             return result
         except Exception:

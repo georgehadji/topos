@@ -63,9 +63,7 @@ async def persist_extraction(
                 )
 
                 # Create or update the mention (problem) for this predicate
-                mention_id = await _upsert_mention(
-                    conn, predicate, value, claim_id, now
-                )
+                mention_id = await _upsert_mention(conn, predicate, value, claim_id, now)
 
                 # Link claim to mention
                 if mention_id is not None:

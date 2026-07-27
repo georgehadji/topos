@@ -41,7 +41,7 @@ class PipelineRepo:
                   attempts = attempts + 1
                 WHERE artifact_id = (
                   SELECT artifact_id FROM pipeline
-                  WHERE state <> 'done' AND run_after <= now()
+                  WHERE state NOT IN ('done', 'parked') AND run_after <= now()
                     AND (locked_until IS NULL OR locked_until < now())
                   ORDER BY run_after
                   FOR UPDATE SKIP LOCKED

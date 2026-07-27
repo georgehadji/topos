@@ -24,9 +24,7 @@ def require_role(user: User, minimum: Role) -> None:
     Role hierarchy: viewer < reviewer < analyst < admin
     """
     hierarchy = [Role.VIEWER, Role.REVIEWER, Role.ANALYST, Role.ADMIN]
-    user_max = max(
-        (hierarchy.index(r) for r in user.roles if r in hierarchy), default=-1
-    )
+    user_max = max((hierarchy.index(r) for r in user.roles if r in hierarchy), default=-1)
     required = hierarchy.index(minimum)
 
     if user_max < required:

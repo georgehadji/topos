@@ -35,6 +35,7 @@ class OpenRouterProvider:
         prompt: str,
         model: str,
         response_format: dict[str, Any] | None = None,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Send a chat completion request and return the full response dict."""
         body: dict[str, Any] = {

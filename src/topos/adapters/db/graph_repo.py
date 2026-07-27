@@ -74,25 +74,23 @@ class GraphRepo:
                 FROM edge
             """)
 
-            problems = await conn.fetch(
-                "SELECT id::text, title, category FROM problem LIMIT 200"
-            )
+            problems = await conn.fetch("SELECT id::text, title, category FROM problem LIMIT 200")
 
         node_map: dict[str, GraphNode] = {}
         edges: list[GraphEdge] = []
 
         for p in problems:
             pid = p["id"]
-            node_map[pid] = GraphNode(
-                id=pid, type="problem", label=p["title"][:60], score=0.5
-            )
+            node_map[pid] = GraphNode(id=pid, type="problem", label=p["title"][:60], score=0.5)
 
         for r in rows:
             src_id = r["src_id"]
             dst_id = r["dst_id"]
             for rid in (src_id, dst_id):
                 if rid not in node_map:
-                    node_map[rid] = GraphNode(id=rid, type=r.get("src_type", "unknown"), label=rid[:8])  # noqa: E501
+                    node_map[rid] = GraphNode(
+                        id=rid, type=r.get("src_type", "unknown"), label=rid[:8]
+                    )
             edges.append(GraphEdge(source=src_id, target=dst_id, relation=r["rel"]))
 
         return GraphResult(nodes=list(node_map.values()), edges=edges)

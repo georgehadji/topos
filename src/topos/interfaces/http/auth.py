@@ -76,9 +76,7 @@ def _decode_jwt_payload(token: str) -> dict[str, Any] | None:
 
 def _payload_to_user(payload: dict[str, Any]) -> User:
     """Extract a User from OIDC token claims."""
-    raw_roles = payload.get("realm_access", {}).get("roles", []) or payload.get(
-        "roles", []
-    )
+    raw_roles = payload.get("realm_access", {}).get("roles", []) or payload.get("roles", [])
     roles = set()
     for r in raw_roles:
         with suppress(ValueError):

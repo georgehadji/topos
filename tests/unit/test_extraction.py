@@ -68,15 +68,20 @@ def test_parse_empty_llm_response() -> None:
 
 
 def test_parse_invalid_json_returns_empty() -> None:
-    raw = {
-        "choices": [{"message": {"content": "not json at all"}}]
-    }
+    raw = {"choices": [{"message": {"content": "not json at all"}}]}
     result = _parse_response(raw)
     assert result == []
 
 
 def test_validate_valid_claim() -> None:
-    raw = [{"predicate": "pothole", "value": "large pothole on Egnatia", "span_start": 0, "span_end": 10}]
+    raw = [
+        {
+            "predicate": "pothole",
+            "value": "large pothole on Egnatia",
+            "span_start": 0,
+            "span_end": 10,
+        }
+    ]
     result = _validate_claims(raw, "0123456789")
     assert len(result) == 1
     assert result[0].claim.predicate == "pothole"
@@ -116,7 +121,7 @@ def test_validate_rejects_missing_value() -> None:
 
 def test_validate_non_dict_items_skipped() -> None:
     raw = ["not a dict"]
-    result = _validate_claims(raw, "text")  # type: ignore[list-item]
+    result = _validate_claims(raw, "text")
     assert len(result) == 0
 
 

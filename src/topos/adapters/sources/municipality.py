@@ -27,9 +27,7 @@ class MunicipalityPlugin(SourcePlugin):
     kind = "municipality"
     config_model = MunicipalityConfig
 
-    async def fetch(
-        self, config: BaseModel
-    ) -> AsyncIterator[PluginArtifact]:
+    async def fetch(self, config: BaseModel) -> AsyncIterator[PluginArtifact]:
         cfg = MunicipalityConfig.model_validate(config)
 
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
@@ -56,9 +54,7 @@ class MunicipalityPlugin(SourcePlugin):
                     yield PluginArtifact(
                         uri=f"municipality://{url.split('/')[-1] or str(i)}",
                         data=doc_resp.content,
-                        mime=doc_resp.headers.get(
-                            "content-type", "application/octet-stream"
-                        ),
+                        mime=doc_resp.headers.get("content-type", "application/octet-stream"),
                         meta={"url": url, "source": "thessaloniki.gr"},
                     )
             except httpx.HTTPStatusError:

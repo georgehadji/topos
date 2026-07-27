@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 # backup.sh — PostgreSQL base backup to object storage
 #
-# Uses pg_basebackup to create a full backup, tars + compresses it,
-# and uploads to the S3-compatible object store (MinIO in dev, the
-# same S3 endpoint in production — see ARCHITECTURE.md).
+# Generates a gzipped tar backup stream from the postgres container
+# and uploads it to the S3-compatible object store.
 #
-# Run hourly via cron/systemd timer. Retention is handled externally
-# (object storage lifecycle policies).
-#
-# Prerequisites:
-#   - .env with TOPOS_S3_* and POSTGRES_* variables
-#   - pg_basebackup (postgresql-client-16)
-#   - curl + awscli or MinIO client
+# Idempotent and requires no postgres client tools or compression
+# utilities on the host.
 
 set -euo pipefail
+
+export MSYS_NO_PATHCONV=1
 
 cd "$(dirname "$0")/.."
 
@@ -27,50 +23,30 @@ cd "$(dirname "$0")/.."
 : "${TOPOS_S3_BUCKET:=topos-backups}"
 
 BACKUP_NAME="topos-pg-$(date -u +%Y%m%dT%H%M%SZ)"
-BACKUP_DIR="/tmp/${BACKUP_NAME}"
-BACKUP_FILE="/tmp/${BACKUP_NAME}.tar.zst"
-
-# Extract PG host/port from DSN
-PG_HOST=$(echo "$TOPOS_DB_DSN" | sed -E 's|.*://[^:]+:[^@]+@([^:/]+).*|\1|')
-PG_PORT=$(echo "$TOPOS_DB_DSN" | sed -E 's|.*://[^:]+:[^@]+@[^:]+:([0-9]+)/.*|\1|')
-PG_PORT=${PG_PORT:-5432}
+BACKUP_FILE="$(pwd)/infra/${BACKUP_NAME}.tar.gz"
 
 echo "=== backup: ${BACKUP_NAME} ==="
 
-# ── Take base backup ─────────────────────────────────────────────────────
-# Ex- container — runs against the docker-compose postgres
+# ── Ensure S3 Bucket Exists ──────────────────────────────────────────────
+echo "Ensuring S3 bucket '${TOPOS_S3_BUCKET}' exists..."
+curl -s -X PUT "${TOPOS_S3_ENDPOINT}/${TOPOS_S3_BUCKET}" >/dev/null || true
+
+# ── Stream base backup from container directly to host file ──────────────
+echo "Streaming pg_basebackup from container..."
 docker compose exec -T postgres pg_basebackup \
   -h localhost \
   -p 5432 \
   -U topos \
-  -D "$BACKUP_DIR" \
   -Ft \
   -z \
-  -P
-
-# ── Tar + compress ───────────────────────────────────────────────────────
-# (Already -z, but wrap in single archive)
-if [ -f "$BACKUP_FILE" ]; then rm -f "$BACKUP_FILE"; fi
-tar -C /tmp -cf "${BACKUP_FILE}" "${BACKUP_NAME}" 2>/dev/null || \
-tar -I zstd -C /tmp -cf "${BACKUP_FILE}" "${BACKUP_NAME}"
+  -X fetch \
+  -D - > "$BACKUP_FILE"
 
 # ── Upload to S3 ─────────────────────────────────────────────────────────
-# Try aws CLI first, fall back to curl-based upload (MinIO)
-if command -v aws &>/dev/null; then
-  aws s3 cp "$BACKUP_FILE" "s3://${TOPOS_S3_BUCKET}/postgres/${BACKUP_NAME}.tar.zst" \
-    --endpoint-url "$TOPOS_S3_ENDPOINT"
-elif command -v mc &>/dev/null; then
-  mc cp "$BACKUP_FILE" "topos/${TOPOS_S3_BUCKET}/postgres/${BACKUP_NAME}.tar.zst"
-else
-  # curl-based PUT to MinIO-style S3
-  curl -s -X PUT \
-    "${TOPOS_S3_ENDPOINT}/${TOPOS_S3_BUCKET}/postgres/${BACKUP_NAME}.tar.zst" \
-    -H "Content-Type: application/zstd" \
-    -H "Authorization: Bearer ${TOPOS_S3_SECRET_KEY}" \
-    --data-binary "@$BACKUP_FILE"
-fi
+echo "Uploading backup to S3/MinIO..."
+uv run python infra/upload_backup.py "$BACKUP_FILE" "postgres/${BACKUP_NAME}.tar.gz"
 
 # ── Cleanup ──────────────────────────────────────────────────────────────
-rm -rf "$BACKUP_DIR" "$BACKUP_FILE"
+rm -f "$BACKUP_FILE"
 
 echo "=== backup: done ==="

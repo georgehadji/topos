@@ -3,15 +3,13 @@
 #
 # Run quarterly. Record duration in PROGRESS.md.
 #
-# This spins up a throwaway postgres container, downloads the latest backup
-# from object storage, restores it, verifies the restore, and tears down.
-# It does NOT touch the production database.
-#
-# Prerequisites:
-#   - Same as backup.sh
-#   - Postgres 16 client tools (pg_restore, pg_isready)
+# This downloads the latest base backup tarball, extracts it into a temporary
+# Docker volume, boots a throwaway PostgreSQL server from it, verifies the database
+# tables/extensions are fully intact, and cleans up.
 
 set -euo pipefail
+
+export MSYS_NO_PATHCONV=1
 
 cd "$(dirname "$0")/.."
 
@@ -25,72 +23,65 @@ cd "$(dirname "$0")/.."
 : "${TOPOS_S3_BUCKET:=topos-backups}"
 
 RESTORE_CONTAINER="topos-restore-drill"
-RESTORE_DB="topos_restore_drill"
+RESTORE_VOLUME="topos-restore-data"
+BACKUP_FILE="$(pwd)/infra/latest-backup-drill.tar.gz"
 
 START_EPOCH=$(date +%s)
 
 echo "=== restore-drill: starting ==="
 
 # ── Download latest backup ───────────────────────────────────────────────
-echo "--- Downloading latest backup ---"
-LATEST=$(curl -s "${TOPOS_S3_ENDPOINT}/${TOPOS_S3_BUCKET}/?prefix=postgres/" \
-  | grep -oP 'topos-pg-\d+T[0-9]{6}Z\.tar\.zst' \
-  | sort -r \
-  | head -1)
+echo "--- Downloading latest backup using boto3 helper ---"
+uv run python infra/download_latest_backup.py "$BACKUP_FILE"
 
-if [ -z "$LATEST" ]; then
-  echo "FATAL: no backup found in s3://${TOPOS_S3_BUCKET}/postgres/"
-  exit 1
-fi
+# ── Create throwaway volume & extract backup ──────────────────────────────
+echo "--- Creating temporary restore volume ---"
+docker volume rm -f "$RESTORE_VOLUME" 2>/dev/null || true
+docker volume create "$RESTORE_VOLUME"
 
-echo "Latest backup: ${LATEST}"
-BACKUP_FILE="/tmp/${LATEST}"
-curl -s -o "$BACKUP_FILE" \
-  "${TOPOS_S3_ENDPOINT}/${TOPOS_S3_BUCKET}/postgres/${LATEST}"
+echo "--- Extracting base backup into restore volume ---"
+# We run a small alpine container to untar the backup into the volume
+docker run --rm -v "${RESTORE_VOLUME}:/data" -v "$(pwd)/infra:/backup" alpine tar -xzf "/backup/latest-backup-drill.tar.gz" -C /data
 
-# ── Spin up throwaway container ──────────────────────────────────────────
-echo "--- Starting throwaway postgres ---"
+# ── Boot Postgres using the restored volume ──────────────────────────────
+echo "--- Booting restored PostgreSQL container ---"
 docker rm -f "$RESTORE_CONTAINER" 2>/dev/null || true
 docker run -d \
   --name "$RESTORE_CONTAINER" \
-  -e POSTGRES_USER=topos \
-  -e POSTGRES_PASSWORD=devonly \
-  -e POSTGRES_DB="$RESTORE_DB" \
+  -v "${RESTORE_VOLUME}:/var/lib/postgresql/data" \
   topos-postgres:latest
 
 # Wait for PG to be ready
-for i in $(seq 1 20); do
-  if docker exec "$RESTORE_CONTAINER" pg_isready -U topos >/dev/null 2>&1; then
+echo "Waiting for PostgreSQL to initialize..."
+for i in $(seq 1 30); do
+  if docker exec "$RESTORE_CONTAINER" pg_isready -U topos -d topos >/dev/null 2>&1; then
     echo "Postgres ready after ${i}s"
     break
   fi
-  if [ "$i" -eq 20 ]; then
+  if [ "$i" -eq 30 ]; then
     echo "FATAL: Postgres did not become ready"
+    # Show container logs on failure to help debug
+    docker logs "$RESTORE_CONTAINER" || true
+    docker rm -f "$RESTORE_CONTAINER"
+    docker volume rm -f "$RESTORE_VOLUME"
+    rm -f "$BACKUP_FILE"
     exit 1
   fi
   sleep 1
 done
 
-# ── Restore ──────────────────────────────────────────────────────────────
-echo "--- Restoring backup ---"
-docker exec -i "$RESTORE_CONTAINER" pg_restore \
-  -U topos \
-  -d "$RESTORE_DB" \
-  --clean \
-  --if-exists \
-  < "$BACKUP_FILE"
-
-# ── Verify ───────────────────────────────────────────────────────────────
-echo "--- Verifying restore ---"
-docker exec "$RESTORE_CONTAINER" psql -U topos -d "$RESTORE_DB" \
+# ── Verify restored tables and extensions ────────────────────────────────
+echo "--- Verifying restored database ---"
+docker exec "$RESTORE_CONTAINER" psql -U topos -d topos \
   -c "SELECT 'tables' AS check_name, count(*)::text AS result FROM information_schema.tables WHERE table_schema = 'public'"
 
-docker exec "$RESTORE_CONTAINER" psql -U topos -d "$RESTORE_DB" \
+docker exec "$RESTORE_CONTAINER" psql -U topos -d topos \
   -c "SELECT 'extensions' AS check_name, string_agg(extname, ', ') AS result FROM pg_extension"
 
 # ── Teardown ─────────────────────────────────────────────────────────────
-echo "--- Cleaning up ---"
+echo "--- Cleaning up restore drill artifacts ---"
 docker rm -f "$RESTORE_CONTAINER"
+docker volume rm -f "$RESTORE_VOLUME"
 rm -f "$BACKUP_FILE"
 
 ELAPSED=$(( $(date +%s) - START_EPOCH ))

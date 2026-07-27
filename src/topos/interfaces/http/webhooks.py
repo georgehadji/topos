@@ -56,13 +56,15 @@ async def register_webhook(
     *secret* — HMAC secret for signature verification
     """
     webhooks = _load_webhooks()
-    webhooks.append({
-        "id": hashlib.sha256(url.encode()).hexdigest()[:12],
-        "url": url,
-        "events": events or ["*"],
-        "secret": secret,
-        "created_at": datetime.now(UTC).isoformat(),
-    })
+    webhooks.append(
+        {
+            "id": hashlib.sha256(url.encode()).hexdigest()[:12],
+            "url": url,
+            "events": events or ["*"],
+            "secret": secret,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+    )
     _save_webhooks(webhooks)
     return {"status": "registered", "url": url}
 
@@ -84,11 +86,13 @@ async def dispatch(event: str, payload: dict[str, Any]) -> None:
     Called by services when events occur.
     """
     webhooks = _load_webhooks()
-    body = json.dumps({
-        "event": event,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "payload": payload,
-    })
+    body = json.dumps(
+        {
+            "event": event,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "payload": payload,
+        }
+    )
 
     async with httpx.AsyncClient(timeout=10) as client:
         for wh in webhooks:

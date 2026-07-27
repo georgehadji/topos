@@ -16,9 +16,7 @@ import asyncpg
 class Cache:
     """Wraps a provider and caches responses keyed on sha256(prompt + model)."""
 
-    def __init__(
-        self, inner: Any, pool: asyncpg.Pool | None = None
-    ) -> None:
+    def __init__(self, inner: Any, pool: asyncpg.Pool | None = None) -> None:
         self._inner = inner
         self._pool = pool
         self._memory: dict[str, dict[str, Any]] = {}
@@ -29,6 +27,7 @@ class Cache:
         prompt: str,
         model: str,
         response_format: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         cache_key = hashlib.sha256(
             json.dumps(
@@ -47,7 +46,7 @@ class Cache:
                 return cached
 
         result = await self._inner.complete(
-            prompt=prompt, model=model, response_format=response_format
+            prompt=prompt, model=model, response_format=response_format, **kwargs
         )
 
         self._memory[cache_key] = result
@@ -58,9 +57,7 @@ class Cache:
 
     async def _fetch_from_db(self, key: str) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            row = await conn.fetchrow(
-                "SELECT response FROM llm_cache WHERE cache_key = $1", key
-            )
+            row = await conn.fetchrow("SELECT response FROM llm_cache WHERE cache_key = $1", key)
         if row is None:
             return None
         val = row["response"]

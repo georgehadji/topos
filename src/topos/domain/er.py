@@ -68,7 +68,7 @@ def compute_features(pair: MentionPair) -> FeatureVector:
     same_pred = 1.0 if pair.predicate_a == pair.predicate_b else 0.0
     text_sim = _token_overlap_ratio(pair.text_a, pair.text_b)
     geo_prox = _geo_proximity(pair.lat_a, pair.lon_a, pair.lat_b, pair.lon_b)
-    combined = (same_pred * 0.4 + text_sim * 0.35 + geo_prox * 0.25)
+    combined = same_pred * 0.4 + text_sim * 0.35 + geo_prox * 0.25
 
     return FeatureVector(
         same_predicate=same_pred,
@@ -93,8 +93,10 @@ def _token_overlap_ratio(text_a: str, text_b: str) -> float:
 
 
 def _geo_proximity(
-    lat_a: float | None, lon_a: float | None,
-    lat_b: float | None, lon_b: float | None,
+    lat_a: float | None,
+    lon_a: float | None,
+    lat_b: float | None,
+    lon_b: float | None,
 ) -> float:
     """Compute geographic proximity as inverse normalized distance.
 
@@ -111,7 +113,7 @@ def _geo_proximity(
     # Approximate: 1 degree lat ≈ 111km, 1 degree lon ≈ 111*cos(40.6°) ≈ 84km
     dlat = (lat_a - lat_b) * 111.0
     dlon = (lon_a - lon_b) * 84.0
-    dist_km = (dlat ** 2 + dlon ** 2) ** 0.5
+    dist_km = (dlat**2 + dlon**2) ** 0.5
 
     # Normalize: 0km → 1.0, 5km → 0.0
     return float(max(0.0, 1.0 - dist_km / 5.0))

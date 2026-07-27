@@ -157,7 +157,9 @@ def sensitivity(
         new_priority = compute_priority(
             compute_impact(modified.severity, modified.reach),
             compute_urgency(modified.trend, modified.severity),
-            modified.tractability, modified.cost_eur, modified.leverage,
+            modified.tractability,
+            modified.cost_eur,
+            modified.leverage,
         ) or Decimal("0")
         results[field] = (new_priority - base).quantize(Decimal("0.01"))
 
@@ -216,11 +218,15 @@ def _build_modified(
     if field == "reach":
         return ScoreSnapshot(
             problem_id=snapshot.problem_id,
-            severity=snapshot.severity, reach=_adjust_reach(snapshot.reach, delta),
-            trend=snapshot.trend, evidence_strength=snapshot.evidence_strength,
-            tractability=snapshot.tractability, cost_eur=snapshot.cost_eur,
+            severity=snapshot.severity,
+            reach=_adjust_reach(snapshot.reach, delta),
+            trend=snapshot.trend,
+            evidence_strength=snapshot.evidence_strength,
+            tractability=snapshot.tractability,
+            cost_eur=snapshot.cost_eur,
             leverage=snapshot.leverage,
-            impact=snapshot.impact, urgency=snapshot.urgency,
+            impact=snapshot.impact,
+            urgency=snapshot.urgency,
             priority=snapshot.priority,
         )
     return ScoreSnapshot(
@@ -232,6 +238,7 @@ def _build_modified(
         tractability=adj if field == "tractability" else snapshot.tractability,
         cost_eur=adj if field == "cost_eur" else snapshot.cost_eur,
         leverage=adj if field == "leverage" else snapshot.leverage,
-        impact=snapshot.impact, urgency=snapshot.urgency,
+        impact=snapshot.impact,
+        urgency=snapshot.urgency,
         priority=snapshot.priority,
     )

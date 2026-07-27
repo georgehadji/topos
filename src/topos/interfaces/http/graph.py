@@ -35,12 +35,10 @@ async def get_graph(
     result = await repo.problem_graph(depth=depth)
     return {
         "nodes": [
-            {"id": n.id, "type": n.type, "label": n.label, "score": n.score}
-            for n in result.nodes
+            {"id": n.id, "type": n.type, "label": n.label, "score": n.score} for n in result.nodes
         ],
         "edges": [
-            {"source": e.source, "target": e.target, "relation": e.relation}
-            for e in result.edges
+            {"source": e.source, "target": e.target, "relation": e.relation} for e in result.edges
         ],
     }
 
@@ -56,11 +54,9 @@ async def explore_problem(
     result = await repo.explore(problem_id, depth=depth)
     return {
         "nodes": [
-            {"id": n.id, "type": n.type, "label": n.label, "score": n.score}
-            for n in result.nodes
+            {"id": n.id, "type": n.type, "label": n.label, "score": n.score} for n in result.nodes
         ],
         "edges": [
-            {"source": e.source, "target": e.target, "relation": e.relation}
-            for e in result.edges
+            {"source": e.source, "target": e.target, "relation": e.relation} for e in result.edges
         ],
     }

@@ -84,7 +84,14 @@ async def run_er(
 
                 # Write er_decision row
                 await _write_decision(
-                    conn, a["id"], b["id"], verdict, score, fv, actor, now,
+                    conn,
+                    a["id"],
+                    b["id"],
+                    verdict,
+                    score,
+                    fv,
+                    actor,
+                    now,
                 )
 
                 if verdict == "match":

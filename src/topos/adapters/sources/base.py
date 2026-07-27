@@ -53,9 +53,7 @@ class SourcePlugin:
     kind: ClassVar[str]
     config_model: ClassVar[type[BaseModel]]
 
-    async def fetch(
-        self, config: BaseModel
-    ) -> AsyncIterator[PluginArtifact]:
+    async def fetch(self, config: BaseModel) -> AsyncIterator[PluginArtifact]:
         """Fetch new artifacts from the source.
 
         *config* is the parsed config.jsonb validated against
@@ -65,9 +63,7 @@ class SourcePlugin:
         return
         yield  # type: ignore[unreachable]
 
-    async def parse(
-        self, data: bytes, mime: str
-    ) -> AsyncIterator[PluginEntry]:
+    async def parse(self, data: bytes, mime: str) -> AsyncIterator[PluginEntry]:
         """Parse a downloaded artifact into text and optional claims."""
         # Default: no-op. Subclasses override and yield.
         return

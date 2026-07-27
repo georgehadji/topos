@@ -85,7 +85,4 @@ async def test_search_with_all_filters() -> None:
     )
 
     sql = pool.acquire.return_value.__aenter__.return_value.fetch.call_args[0][0]
-    assert all(
-        keyword in sql
-        for keyword in ["plainto_tsquery", "ANY(", "ST_DWithin", "LIMIT"]
-    )
+    assert all(keyword in sql for keyword in ["plainto_tsquery", "ANY(", "ST_DWithin", "LIMIT"])

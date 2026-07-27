@@ -33,6 +33,7 @@ class DiavgeiaConfig(BaseModel):
     org: str = ""
     last_ada: str = ""
     max_pages: int = 0  # 0 = unlimited
+    max_per_fetch: int = 0  # 0 = unlimited
 
 
 _HEADERS = {
@@ -53,9 +54,7 @@ class DiavgeiaPlugin(SourcePlugin):
     kind = "diavgeia"
     config_model = DiavgeiaConfig
 
-    async def fetch(
-        self, config: BaseModel
-    ) -> AsyncIterator[PluginArtifact]:
+    async def fetch(self, config: BaseModel) -> AsyncIterator[PluginArtifact]:
         cfg = DiavgeiaConfig.model_validate(config)
         seen = 0
         page = 0
@@ -84,6 +83,9 @@ class DiavgeiaPlugin(SourcePlugin):
                     break  # no more results
 
                 for item in decisions:
+                    if cfg.max_per_fetch > 0 and seen >= cfg.max_per_fetch:
+                        return
+
                     ada = item.get("ada", "")
                     if not ada:
                         continue
@@ -93,10 +95,7 @@ class DiavgeiaPlugin(SourcePlugin):
                         return
 
                     # Download the actual PDF
-                    pdf_url = (
-                        f"https://diavgeia.gov.gr/luminapi"
-                        f"/api/decisions/{ada}/document"
-                    )
+                    pdf_url = f"https://diavgeia.gov.gr/luminapi/api/decisions/{ada}/document"
                     try:
                         pdf_resp = await client.get(pdf_url)
                         pdf_resp.raise_for_status()
@@ -107,9 +106,7 @@ class DiavgeiaPlugin(SourcePlugin):
                     yield PluginArtifact(
                         uri=f"diavgeia://{ada}",
                         data=pdf_resp.content,
-                        mime=pdf_resp.headers.get(
-                            "content-type", "application/pdf"
-                        ),
+                        mime=pdf_resp.headers.get("content-type", "application/pdf"),
                         meta={
                             "ada": ada,
                             "subject": item.get("subject", ""),
@@ -117,10 +114,7 @@ class DiavgeiaPlugin(SourcePlugin):
                             "decisionType": item.get("decisionType", ""),
                             "protocolNumber": item.get("protocolNumber", ""),
                             "issueDate": _parse_ts(item.get("issueDate")),
-                            "url": (
-                                item.get("documentUrl", "")
-                                or item.get("url", "")
-                            ),
+                            "url": (item.get("documentUrl", "") or item.get("url", "")),
                         },
                     )
                     seen += 1

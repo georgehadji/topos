@@ -42,7 +42,8 @@ class Retry:
         prompt: str,
         model: str,
         response_format: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         return await self._retryer(self._inner.complete)(  # type: ignore[no-any-return]
-            prompt=prompt, model=model, response_format=response_format
+            prompt=prompt, model=model, response_format=response_format, **kwargs
         )

@@ -73,9 +73,7 @@ async def test_persist_multiple_claims_same_chunk() -> None:
 
     ext = Extraction(
         artifact_id="00000000-0000-0000-0000-000000000001",
-        chunks=[
-            _chunk(0, "water leak and broken pavement", ["water_leak", "road_damage"])
-        ],
+        chunks=[_chunk(0, "water leak and broken pavement", ["water_leak", "road_damage"])],
     )
     count = await persist_extraction(mock_pool, ext)
     assert count == 2

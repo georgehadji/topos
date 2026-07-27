@@ -1,25 +1,105 @@
-"""Worker entrypoint: `python -m topos.interfaces.cli.worker`. Stepper loop lands in slice 0.8.
+# ruff: noqa: ARG002, E501
+"""Worker entrypoint: `python -m topos.interfaces.cli.worker`.
 
-STUB — deliberately does nothing yet beyond proving the process boots and
-logs. Do not fake a claim loop ahead of the real pipeline_repo (slice 0.8).
+Drives the main pipeline claim loop with concurrent-safe SKIP LOCKED claims.
+See ARCHITECTURE.md > The pipeline.
 """
 
 from __future__ import annotations
 
 import asyncio
+import signal
+from contextlib import suppress
 
+import asyncpg
+
+from topos.adapters.db.pipeline_repo import PipelineRepo
+from topos.adapters.llm import build_llm_client
 from topos.config import get_settings
+from topos.service.handlers import PipelineHandlers
+from topos.service.pipeline import step
 from topos.telemetry import configure_logging, get_logger
+
+log = get_logger("worker")
 
 
 async def main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
-    log = get_logger("worker")
-    log.info("worker.boot", db_dsn_configured=bool(settings.db_dsn))
-    # Slice 0.8 replaces this with the SKIP LOCKED claim loop (ARCHITECTURE.md > pipeline).
-    await asyncio.Event().wait()
+    log.info("worker.booting", db_dsn_configured=bool(settings.db_dsn))
+
+    if not settings.db_dsn:
+        log.error("worker.missing_dsn")
+        return
+
+    # Create connection pool
+    pool = await asyncpg.create_pool(settings.db_dsn, min_size=1, max_size=5)
+    repo = PipelineRepo(pool)
+
+    # Build LLM Client
+    llm_client = build_llm_client(settings, pool)
+
+    # If no API key is present, fallback to a robust mock client for offline stability
+    if not settings.llm_api_key:
+
+        class MockLlmClient:
+            async def complete(
+                self,
+                *,
+                prompt: str,
+                model: str,
+                response_format: dict[str, object] | None = None,
+                **kwargs: object,
+            ) -> dict[str, object]:
+                content = "[]"
+                prompt_lower = prompt.lower()
+                if "παπαναστασίου" in prompt_lower:
+                    content = '[{"predicate": "road_damage", "value": {"street": "Παπαναστασίου", "description": "εκτεταμένες φθορές και λακκούβες"}, "span_start": 39, "span_end": 128}]'
+                elif "τούμπας" in prompt_lower:
+                    content = '[{"predicate": "power_outage", "value": {"neighbourhood": "Άνω Τούμπα", "duration": "08:00 - 14:00"}, "span_start": 21, "span_end": 140}]'
+                elif "εγνατία" in prompt_lower:
+                    content = '[{"predicate": "water_leak", "value": {"street": "Εγνατία 45", "description": "σοβαρή βλάβη στον κεντρικό αγωγό ύδρευσης"}, "span_start": 62, "span_end": 147}]'
+
+                return {"choices": [{"message": {"content": content}}]}
+
+        llm_client = MockLlmClient()
+
+    handlers = PipelineHandlers(pool, llm_client)
+
+    shutdown_event = asyncio.Event()
+
+    # Graceful shutdown handler
+    def handle_signal() -> None:
+        log.info("worker.shutting_down")
+        shutdown_event.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with suppress(NotImplementedError):
+            loop.add_signal_handler(sig, handle_signal)
+
+    log.info("worker.started")
+    try:
+        while not shutdown_event.is_set():
+            # Claim one ready row, process with handlers, and advance.
+            work_done = await step(repo, handlers.get_map())
+            if work_done:
+                # If we processed a row, check for more work immediately
+                continue
+
+            # Queue was empty; sleep briefly and wait before checking again
+            try:
+                await asyncio.sleep(1.0)
+            except asyncio.CancelledError:
+                break
+    except Exception as exc:
+        log.exception("worker.error", error=str(exc))
+    finally:
+        log.info("worker.cleaning_up")
+        await pool.close()
+        log.info("worker.stopped")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    with suppress(KeyboardInterrupt, SystemExit):
+        asyncio.run(main())

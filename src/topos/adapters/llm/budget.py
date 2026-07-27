@@ -36,17 +36,17 @@ class BudgetGuard:
         prompt: str,
         model: str,
         response_format: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         if self._pool is not None:
             spent = await self._spent_this_month()
             if spent >= self._budget:
                 raise BudgetExceeded(
-                    f"Monthly budget \u20ac{self._budget:.2f} exceeded "
-                    f"(\u20ac{spent:.4f} spent)"
+                    f"Monthly budget \u20ac{self._budget:.2f} exceeded (\u20ac{spent:.4f} spent)"
                 )
 
         return await self._inner.complete(  # type: ignore[no-any-return]
-            prompt=prompt, model=model, response_format=response_format
+            prompt=prompt, model=model, response_format=response_format, **kwargs
         )
 
     async def _spent_this_month(self) -> float:

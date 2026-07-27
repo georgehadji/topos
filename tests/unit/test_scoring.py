@@ -19,9 +19,7 @@ from topos.domain.scoring import (
 
 
 def test_impact_with_all_inputs() -> None:
-    result = compute_impact(
-        severity=Decimal("0.8"), reach=5, weights=Weights()
-    )
+    result = compute_impact(severity=Decimal("0.8"), reach=5, weights=Weights())
     assert result is not None
     assert 0.50 < float(result) < 0.80
 
@@ -49,8 +47,11 @@ def test_urgency_none_inputs() -> None:
 
 def test_priority_with_all_inputs() -> None:
     result = compute_priority(
-        Decimal("0.8"), Decimal("0.7"), Decimal("0.6"),
-        Decimal("50000"), Decimal("0.3"),
+        Decimal("0.8"),
+        Decimal("0.7"),
+        Decimal("0.6"),
+        Decimal("50000"),
+        Decimal("0.3"),
     )
     assert result is not None
     assert 0 < float(result) <= 1.0
@@ -80,9 +81,13 @@ def test_score_problem_full() -> None:
 
 def test_score_problem_all_none() -> None:
     inputs = MeasuredInputs(
-        severity=None, reach=None, trend=None,
-        evidence_strength=None, tractability=None,
-        cost=None, leverage=None,
+        severity=None,
+        reach=None,
+        trend=None,
+        evidence_strength=None,
+        tractability=None,
+        cost=None,
+        leverage=None,
     )
     snap = score_problem("prob-2", inputs)
     assert snap.impact is None
@@ -92,9 +97,13 @@ def test_score_problem_all_none() -> None:
 
 def test_score_problem_records_all_nodes() -> None:
     inputs = MeasuredInputs(
-        severity=Decimal("0.5"), reach=3, trend=Decimal("0"),
-        evidence_strength=Decimal("0.6"), tractability=Decimal("0.7"),
-        cost=Decimal("10000"), leverage=Decimal("0.4"),
+        severity=Decimal("0.5"),
+        reach=3,
+        trend=Decimal("0"),
+        evidence_strength=Decimal("0.6"),
+        tractability=Decimal("0.7"),
+        cost=Decimal("10000"),
+        leverage=Decimal("0.4"),
     )
     snap = score_problem("prob-3", inputs)
     assert snap.severity == Decimal("0.5")
@@ -109,9 +118,13 @@ def test_score_problem_records_all_nodes() -> None:
 
 def test_sensitivity_returns_expected_keys() -> None:
     inputs = MeasuredInputs(
-        severity=Decimal("0.5"), reach=3, trend=Decimal("0"),
-        evidence_strength=Decimal("0.5"), tractability=Decimal("0.5"),
-        cost=Decimal("10000"), leverage=Decimal("0.5"),
+        severity=Decimal("0.5"),
+        reach=3,
+        trend=Decimal("0"),
+        evidence_strength=Decimal("0.5"),
+        tractability=Decimal("0.5"),
+        cost=Decimal("10000"),
+        leverage=Decimal("0.5"),
     )
     snap = score_problem("prob-4", inputs)
     sens = sensitivity(snap)
@@ -124,9 +137,13 @@ def test_sensitivity_returns_expected_keys() -> None:
 
 def test_sensitivity_none_inputs_skipped() -> None:
     inputs = MeasuredInputs(
-        severity=None, reach=None, trend=None,
-        evidence_strength=None, tractability=None,
-        cost=None, leverage=None,
+        severity=None,
+        reach=None,
+        trend=None,
+        evidence_strength=None,
+        tractability=None,
+        cost=None,
+        leverage=None,
     )
     snap = score_problem("prob-5", inputs)
     sens = sensitivity(snap)
@@ -144,9 +161,13 @@ def test_custom_weights() -> None:
         leverage_in_priority=Decimal("0"),
     )
     inputs = MeasuredInputs(
-        severity=Decimal("1.0"), reach=0, trend=Decimal("-1.0"),
-        evidence_strength=None, tractability=Decimal("0"),
-        cost=Decimal("0"), leverage=Decimal("0"),
+        severity=Decimal("1.0"),
+        reach=0,
+        trend=Decimal("-1.0"),
+        evidence_strength=None,
+        tractability=Decimal("0"),
+        cost=Decimal("0"),
+        leverage=Decimal("0"),
     )
     snap = score_problem("prob-6", inputs, weights=custom)
     assert snap.impact is not None

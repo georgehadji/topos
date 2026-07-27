@@ -97,12 +97,7 @@ class RecommendationService:
                 now,
             )
 
-    async def reject(
-        self,
-        problem_id: str,
-        actor: str,
-        reason: str = ""
-    ) -> None:
+    async def reject(self, problem_id: str, actor: str, reason: str = "") -> None:
         """Reject a recommendation."""
         now = datetime.now(UTC)
         async with self._pool.acquire() as conn:
