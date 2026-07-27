@@ -2,6 +2,9 @@
 # run.sh — Lightweight developer CLI wrapper for Topos (Windows/macOS/Linux)
 # Use this instead of 'make' if it is not installed on your system.
 
+# Prevent Git Bash on Windows from converting internal container paths (like /app) to local Windows paths.
+export MSYS_NO_PATHCONV=1
+
 set -e
 
 show_help() {
