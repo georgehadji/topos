@@ -40,7 +40,8 @@ async def main() -> None:
     llm_client = build_llm_client(settings, pool)
 
     # If no API key is present, fallback to a robust mock client for offline stability
-    if not settings.llm_api_key:
+    is_dummy_key = settings.llm_api_key.startswith(("sk-or-v1-aeef18", "devonly", "unset", ""))
+    if not settings.llm_api_key or is_dummy_key:
 
         class MockLlmClient:
             async def complete(

@@ -7,6 +7,7 @@ the response against the extraction schema, and yields ExtractedChunks.
 from __future__ import annotations
 
 import json
+import logging
 from contextlib import suppress
 from decimal import Decimal
 from typing import Any
@@ -19,6 +20,8 @@ from topos.domain.extraction import (
     Span,
 )
 from topos.domain.types import ArtifactId
+
+logger = logging.getLogger(__name__)
 
 # Greek text uses Unicode characters that ruff flags as ambiguous.
 # This is intentional — "A' Thessalonikis" is a proper name.
@@ -80,7 +83,8 @@ async def extract_chunk(
             model=model,
             response_format={"type": "json_object"},
         )
-    except Exception:
+    except Exception as exc:
+        logger.exception("LLM extraction failed for chunk %d: %s", ord, exc)
         return ExtractedChunk(ord=ord, text=text, claims=[])
 
     raw = _parse_response(result)
