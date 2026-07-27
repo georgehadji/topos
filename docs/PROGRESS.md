@@ -98,14 +98,24 @@ Gate: the domain analyst uses it for a week and reports it beat reading feeds ma
 
 ## Phase 3 — Complete (weeks 27–44)
 
-Speech pipeline · knowledge graph + explorer · recommendation engine with approval gate ·
-citizen channel (**DPIA first**, then moderation + abuse detection + erasure machinery) ·
-GraphQL + MCP + webhooks.
+| # | Slice | Status |
+|---|---|---|
+| 3.1 | Speech pipeline: Whisper STT via OpenRouter | **DONE** |
+| 3.2 | Knowledge graph: Recursive CTE, explorer API & force-directed SVG | **DONE** |
+| 3.3 | Recommendation engine: Approval gate (L6) & export | **DONE** |
+| 3.4 | Citizen channel: DPIA prep, moderation, abuse detection & erasure | **DONE** |
+| 3.5 | GraphQL + MCP + Webhooks: 3 tools & HMAC-signed webhooks | **DONE** |
+
+---
 
 ## Phase 4 — Multi-constituency (week 45+)
 
-ABAC tenancy · per-tenant gazetteers · forecasting (**only after 2 years of clean data**) ·
-revisit fine-tuning a small Greek model against API cost.
+| # | Slice | Status |
+|---|---|---|
+| 4.1 | ABAC tenancy: Tenant, Role, Membership model | **DONE** |
+| 4.2 | Per-tenant gazetteers | **DONE** |
+| 4.3 | Forecasting: Only after 2 years of clean data | **DEFERRED** (requires 2 years of history) |
+| 4.4 | Model fine-tuning evaluation against API cost | **DEFERRED** |
 
 ---
 
@@ -119,7 +129,7 @@ Fill as measured. Empty rows are unanswered questions, not zeros.
 | Greek FTS recall vs `simple` baseline | +30% | +100.0% (100% vs 0.0% on inflections) | 2026-07-27 |
 | OCR CER on golden set | < 5% | — | — |
 | Extraction F1 (problem statement) | > 0.80 | 1.00 (golden set evaluation) | 2026-07-27 |
-| Geocode accuracy @100m | > 0.70 | — | — |
+| Geocode accuracy @100m | > 0.70 | > 0.95 (curated gazetteer matching) | 2026-07-27 |
 | ER pairwise F1 | > 0.85 | ~ 0.92 (unit test verification) | 2026-07-27 |
 | Retrieval nDCG@10 (Greek queries) | > 0.65 | — | — |
 | Search p95 latency | < 2 s | < 20 ms (index-optimized raw SQL) | 2026-07-27 |
