@@ -55,11 +55,11 @@ async def main() -> None:
                 content = "[]"
                 prompt_lower = prompt.lower()
                 if "παπαναστασίου" in prompt_lower:
-                    content = '[{"predicate": "road_damage", "value": {"street": "Παπαναστασίου", "description": "εκτεταμένες φθορές και λακκούβες"}, "span_start": 39, "span_end": 128}]'
+                    content = '[{"predicate": "road_damage", "value": {"street": "Παπαναστασίου", "description": "εκτεταμένες φθορές και λακκούβες"}, "span_start": 0, "span_end": 50}]'
                 elif "τούμπας" in prompt_lower:
-                    content = '[{"predicate": "power_outage", "value": {"neighbourhood": "Άνω Τούμπα", "duration": "08:00 - 14:00"}, "span_start": 21, "span_end": 140}]'
+                    content = '[{"predicate": "power_outage", "value": {"neighbourhood": "Άνω Τούμπα", "duration": "08:00 - 14:00"}, "span_start": 0, "span_end": 50}]'
                 elif "εγνατία" in prompt_lower:
-                    content = '[{"predicate": "water_leak", "value": {"street": "Εγνατία 45", "description": "σοβαρή βλάβη στον κεντρικό αγωγό ύδρευσης"}, "span_start": 62, "span_end": 147}]'
+                    content = '[{"predicate": "water_leak", "value": {"street": "Εγνατία 45", "description": "σοβαρή βλάβη στον κεντρικό αγωγό ύδρευσης"}, "span_start": 0, "span_end": 130}]'
 
                 return {"choices": [{"message": {"content": content}}]}
 
