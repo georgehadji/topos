@@ -121,9 +121,9 @@ async def _insert_pipeline(
     await conn.execute(
         """
         INSERT INTO pipeline (artifact_id, state, run_after)
-        VALUES ($1, $2::pipe_state, now() - interval '1 second')
+        VALUES ($1, $2::pipe_state, now() - interval '10 seconds')
         ON CONFLICT (artifact_id) DO UPDATE
-          SET state = $2::pipe_state, run_after = now() - interval '1 second', locked_until = NULL, attempts = 0
+          SET state = $2::pipe_state, run_after = now() - interval '10 seconds', locked_until = NULL, attempts = 0
         """,
         artifact_id,
         state,

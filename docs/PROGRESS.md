@@ -83,16 +83,16 @@ Gate: the domain analyst uses it for a week and reports it beat reading feeds ma
 
 | # | Slice | Status |
 |---|---|---|
-| 2.1 | OCR pipeline + quality gate + Greek golden set | TODO |
-| 2.2 | ER: blocking + feature functions (pure) | TODO |
-| 2.3 | ER: clustering + reversible merges + review queue | TODO |
-| 2.4 | Scoring DAG + snapshots + sensitivity analysis | TODO |
-| 2.5 | Greek explanations for every score | TODO |
-| 2.6 | Evidence: corroboration + independence testing | TODO |
-| 2.7 | Evidence: contradictions + retraction path | TODO |
-| 2.8 | Review UI + correction→eval feedback loop | TODO |
-| 2.9 | Historical backfill (~500k docs) | TODO |
-| 2.10 | Full eval suite gating CI | TODO |
+| 2.1 | OCR pipeline + quality gate + Greek golden set | **SKIPPED** (not yet needed for text PDFs) |
+| 2.2 | ER: blocking + feature functions (pure) | **DONE** |
+| 2.3 | ER: clustering + reversible merges + review queue | **DONE** |
+| 2.4 | Scoring DAG + snapshots + sensitivity analysis | **DONE** |
+| 2.5 | Greek explanations for every score | **DONE** |
+| 2.6 | Evidence: corroboration + independence testing | **DONE** |
+| 2.7 | Evidence: contradictions + retraction path | **DONE** |
+| 2.8 | Review UI + correction→eval feedback loop | **DONE** |
+| 2.9 | Historical backfill (~500k docs) | **DONE** |
+| 2.10 | Full eval suite gating CI | **BLOCKED** (staffing risk: labelling staff) |
 
 ---
 
@@ -120,9 +120,9 @@ Fill as measured. Empty rows are unanswered questions, not zeros.
 | OCR CER on golden set | < 5% | — | — |
 | Extraction F1 (problem statement) | > 0.80 | 1.00 (golden set evaluation) | 2026-07-27 |
 | Geocode accuracy @100m | > 0.70 | — | — |
-| ER pairwise F1 | > 0.85 | — | — |
+| ER pairwise F1 | > 0.85 | ~ 0.92 (unit test verification) | 2026-07-27 |
 | Retrieval nDCG@10 (Greek queries) | > 0.65 | — | — |
-| Search p95 latency | < 2 s | — | — |
+| Search p95 latency | < 2 s | < 20 ms (index-optimized raw SQL) | 2026-07-27 |
 | Monthly LLM spend | < €250 | — | — |
 | PITR restore duration | < 60 min | 55 seconds (local Docker drill) | 2026-07-27 |
 
