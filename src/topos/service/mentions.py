@@ -11,6 +11,7 @@ Labelled as "mentions" until Phase 2 ER ships (naming discipline).
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -58,7 +59,7 @@ async def persist_extraction(
                     span_start,
                     span_end,
                     predicate,
-                    value,
+                    json.dumps(value),
                     claim_data.claim.confidence,
                 )
 
@@ -122,7 +123,7 @@ async def _upsert_mention(
         VALUES ($1::uuid, 1, 'mention_discovered', $2::jsonb, 'system')
         """,
         problem_id,
-        {"predicate": predicate, "claim_id": str(claim_id)},
+        json.dumps({"predicate": predicate, "claim_id": str(claim_id)}),
     )
 
     return problem_id
