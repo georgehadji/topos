@@ -25,7 +25,7 @@ export async function searchProblems(
   if (options?.limit) params.set("limit", String(options.limit));
   if (options?.offset) params.set("offset", String(options.offset));
 
-  const resp = await fetch(`${API_BASE}/search?${params}`);
+  const resp = await fetch(`${API_BASE}/api/search?${params}`);
   if (!resp.ok) throw new Error(`Search failed: ${resp.statusText}`);
   return resp.json();
 }
