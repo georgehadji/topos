@@ -56,6 +56,7 @@ class SearchRepo:
             )
 
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
+        where_params = list(params)
 
         sql = f"""
             SELECT p.id, p.title, p.category,
@@ -72,8 +73,8 @@ class SearchRepo:
         """
 
         async with self._pool.acquire() as conn:
-            total = await conn.fetchval(count_sql, *params[:param_idx])
-            rows = await conn.fetch(sql, *params[:param_idx])
+            total = await conn.fetchval(count_sql, *where_params)
+            rows = await conn.fetch(sql, *params)
 
         results = [
             SearchResult(

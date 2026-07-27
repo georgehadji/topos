@@ -63,13 +63,42 @@ async def _cleanup() -> None:
     """Delete all test rows between tests."""
     conn = await asyncpg.connect(DSN)
     try:
-        for src in ("test", "diavgeia"):
+        for src in ("test", "diavgeia", "fek", "deddhe"):
+            await conn.execute(
+                "DELETE FROM problem_claim WHERE claim_id IN"
+                " (SELECT id FROM claim WHERE artifact_id IN"
+                "  (SELECT id FROM artifact WHERE source_id = $1))",
+                src,
+            )
+            await conn.execute(
+                "DELETE FROM claim WHERE artifact_id IN"
+                " (SELECT id FROM artifact WHERE source_id = $1)",
+                src,
+            )
+            await conn.execute(
+                "DELETE FROM extraction_run WHERE artifact_id IN"
+                " (SELECT id FROM artifact WHERE source_id = $1)",
+                src,
+            )
+            await conn.execute(
+                "DELETE FROM chunk WHERE artifact_id IN"
+                " (SELECT id FROM artifact WHERE source_id = $1)",
+                src,
+            )
+            await conn.execute(
+                "DELETE FROM document WHERE artifact_id IN"
+                " (SELECT id FROM artifact WHERE source_id = $1)",
+                src,
+            )
             await conn.execute(
                 "DELETE FROM pipeline WHERE artifact_id IN"
                 " (SELECT id FROM artifact WHERE source_id = $1)",
                 src,
             )
             await conn.execute("DELETE FROM artifact WHERE source_id = $1", src)
+            await conn.execute(
+                "DELETE FROM problem WHERE id NOT IN (SELECT problem_id FROM problem_claim)"
+            )
     finally:
         await conn.close()
 
