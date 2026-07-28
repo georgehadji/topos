@@ -8,6 +8,8 @@ and project claims to event-sourced mentions.
 
 from __future__ import annotations
 
+import contextlib
+import json
 import logging
 import uuid
 from typing import Any
@@ -170,6 +172,10 @@ class PipelineHandlers:
 
             for claim in claims:
                 val = claim["value"]
+                if isinstance(val, str):
+                    with contextlib.suppress(Exception):
+                        val = json.loads(val)
+
                 toponym = ""
 
                 # Parse possible toponyms from claim values
