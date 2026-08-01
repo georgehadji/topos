@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from topos.adapters.geocode import geocode
 from topos.domain.types import ArtifactId, PipelineRow, PipelineState
 from topos.service.handlers import PipelineHandlers
 
@@ -36,7 +37,7 @@ async def test_handle_fetched_inserts_document() -> None:
         last_error=None,
     )
 
-    handlers = PipelineHandlers(mock_pool, MagicMock())
+    handlers = PipelineHandlers(mock_pool, MagicMock(), geocode)
     await handlers.handle_fetched(row)
 
     # Asserts that SELECT and INSERT are called
@@ -67,7 +68,7 @@ async def test_handle_textified_inserts_chunk() -> None:
         last_error=None,
     )
 
-    handlers = PipelineHandlers(mock_pool, MagicMock())
+    handlers = PipelineHandlers(mock_pool, MagicMock(), geocode)
     await handlers.handle_textified(row)
 
     assert mock_conn.fetchval.call_count == 2
@@ -96,7 +97,7 @@ async def test_handle_extracted_triggers_geocoding() -> None:
         last_error=None,
     )
 
-    handlers = PipelineHandlers(mock_pool, MagicMock())
+    handlers = PipelineHandlers(mock_pool, MagicMock(), geocode)
     await handlers.handle_extracted(row)
 
     # Should geocode 'Εγνατία' (which is in the in-memory gazetteer) and execute updates

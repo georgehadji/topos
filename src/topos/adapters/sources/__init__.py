@@ -1,8 +1,9 @@
 """Source plugin registry. See ARCHITECTURE.md and slice 0.11.
 
 Importing these submodules here ensures that all source plugins (diavgeia,
-khmdhs, municipality, news, fek, deddhe) are imported and automatically
-registered via the `@register` decorator when the package is loaded.
+khmdhs, municipality, news, fek, deddhe, sonar_web, social) are imported and
+automatically registered via the `@register` decorator when the package is
+loaded.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from topos.adapters.sources import (
     khmdhs,
     municipality,
     news,
+    social,
+    sonar_web,
 )
 
 __all__ = [
@@ -23,4 +26,6 @@ __all__ = [
     "khmdhs",
     "municipality",
     "news",
+    "social",
+    "sonar_web",
 ]

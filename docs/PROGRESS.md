@@ -17,7 +17,7 @@ Gate: walking skeleton runs on the real host, `make check` green, cost per docum
 | 0.2 | Compose stack | `docker-compose.yml` `Dockerfile` `infra/postgres/*` `infra/Caddyfile` `.env.example` | `docker compose up` gives PG16+extensions, MinIO, api, worker | **DONE** — 4 containers running (postgres healthy, minio healthy, api, worker). Dockerfiles fixed: pgvector w/ clang-13 + manual install, hunspell ISO-8859-7→UTF-8, PYTHONPATH added. |
 | 0.3 | Config + telemetry | `src/topos/config.py` `telemetry.py` `interfaces/http/app.py` | Settings load from env, structlog JSON out, `/healthz` returns 200 | **DONE** — `TestClient` smoke test green |
 | 0.4 | Migration 001: core schema | `alembic/versions/001_core.py` | `alembic upgrade head` creates §6 tables; `alembic check` clean | **DONE** — 17 tables created. Migration split into individual op.execute() calls for asyncpg compatibility. |
-| 0.5 | **`greek_cfg` FTS config + measurement** | `alembic/versions/002_greek_fts.py` `eval/greek_fts_probe.py` | Config exists; probe reports recall on 200 Greek terms vs `simple`; **result recorded here** | DONE — migration applied (greek_cfg + chunk.tsv + GIN index). `eval/greek_fts_probe.py` not yet written. |
+| 0.5 | **`greek_cfg` FTS config + measurement** | `alembic/versions/002_greek_fts.py` `eval/greek_fts_probe.py` | Config exists; probe reports recall on 200 Greek terms vs `simple`; **result recorded here** | DONE — greek_cfg + chunk.tsv + GIN index. `eval/greek_fts_probe.py` exists and runs (`make eval-greek-fts`): 100.0% vs 0.0%, re-measured 2026-08-01. NOTE: the 2026-07-27 figure was not attributable — until migration 006 the `el_gr_hunspell` dictionary could not stem at all (flag-less wordlist), so `greek_cfg` matched no inflections. Differential vs the pre-006 chain: `ύδρευση`→`ύδρευσης`, `δρόμος`→`δρόμοι`, `Θεσσαλονίκη`→`Θεσσαλονίκης` all 1 hit post-006, 0 pre-006. |
 | 0.6 | Domain types | `src/topos/domain/types.py` | Ids, enums, value objects; mypy strict clean; zero project imports | **DONE** |
 | 0.7 | Pipeline state machine (pure) | `src/topos/domain/pipeline_fsm.py` `tests/unit/test_pipeline_fsm.py` | Transition table is a pure function, 100% branch coverage, no mocks | **DONE** — 6 tests, literal in/out, no mocks |
 | 0.8 | Stepper + claim query | `src/topos/service/pipeline.py` `adapters/db/pipeline_repo.py` `tests/contract/test_stepper.py` | Two concurrent workers never claim the same row (real PG test) | **DONE** — contract tests completed and fully passing. |
@@ -126,7 +126,7 @@ Fill as measured. Empty rows are unanswered questions, not zeros.
 | Metric | Target | Measured | When |
 |---|---|---|---|
 | Cost per document (extraction) | < €0.004 | ~ €0.004 (calculated) | 2026-07-27 |
-| Greek FTS recall vs `simple` baseline | +30% | +100.0% (100% vs 0.0% on inflections) | 2026-07-27 |
+| Greek FTS recall vs `simple` baseline | +30% | +100.0% (100% vs 0.0% on inflections) — re-measured after 006 | 2026-08-01 |
 | OCR CER on golden set | < 5% | — | — |
 | Extraction F1 (problem statement) | > 0.80 | 1.00 (golden set evaluation) | 2026-07-27 |
 | Geocode accuracy @100m | > 0.70 | > 0.95 (curated gazetteer matching) | 2026-07-27 |

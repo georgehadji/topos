@@ -35,8 +35,15 @@ filesize: ## no source file over 400 lines (context economics, see ARCHITECTURE.
 	@echo "✓ file sizes ok"
 
 .PHONY: migrations
-migrations: ## schema and migrations agree
-	$(PY) alembic check
+migrations: ## migrations apply cleanly and leave the database at head
+	# NOT `alembic check`: that is autogenerate-based and needs a MetaData to
+	# diff the schema against. Migrations here are hand-written and env.py
+	# exposes no models (ARCHITECTURE.md > Data access: no ORM), so `check`
+	# fails unconditionally. Applying to head is the check that means something.
+	$(PY) alembic upgrade head
+	@$(PY) alembic current 2>/dev/null | grep -q '(head)' \
+	  || { echo "❌ database is not at migration head"; exit 1; }
+	@echo "✓ migrations at head"
 
 ## ── Tests ───────────────────────────────────────────────────────────────────
 

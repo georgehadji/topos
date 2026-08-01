@@ -55,6 +55,7 @@ forbidden_modules =
     topos.adapters.llm
     topos.adapters.geocode
     topos.adapters.ocr
+    topos.adapters.sources
     topos.adapters.stt
 
 # ── Adapters do not call each other; they are leaves ─────────────────────────

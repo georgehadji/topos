@@ -1,49 +1,48 @@
 """Historical backfill pipeline.
 
-Ingests a batch of documents from a source, runs them through the
-full pipeline (fetch → textify → extract → mention), and records
-cost and progress.
+Ingests a batch of documents from a source and enqueues them at the head of
+the pipeline (``fetched``), where the worker picks them up and drives them
+through textify -> extract -> geocode -> mention.
 
-Run: uv run python -m topos.service.backfill --source diavgeia --limit 100
+The concrete source plugin is resolved by interfaces/ (see
+``topos.interfaces.cli.main``) and injected — service/ never imports
+``adapters.sources`` (.importlinter contract ``service-ports-only``).
+
+Run: uv run topos-cli backfill --source diavgeia --limit 100
 """
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import time
+import uuid
 from typing import Any
 
 import asyncpg
 
-from topos.adapters.sources.diavgeia import DiavgeiaConfig, DiavgeiaPlugin
-from topos.config import get_settings
 from topos.domain.types import ArtifactId
+from topos.service.ports import SourcePlugin
+
+logger = logging.getLogger(__name__)
 
 
 async def backfill_source(
     pool: asyncpg.Pool,
     source_kind: str,
+    plugin: SourcePlugin,
+    config: Any,
     *,
-    max_pages: int = 10,
-    page_size: int = 50,
-    org: str = "",
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Backfill documents from a source.
+    """Backfill documents from *plugin* into the artifact + pipeline tables.
 
-    Returns a summary of ingested artifacts.
+    *source_kind* is the registry key (e.g. ``"diavgeia"``); it is written to
+    ``artifact.source_id``. Returns a summary of what was ingested.
     """
     start = time.time()
     ingested = 0
     errors = 0
-
-    if source_kind == "diavgeia":
-        config = DiavgeiaConfig(max_per_fetch=page_size, org=org, max_pages=max_pages)
-        plugin = DiavgeiaPlugin()
-    else:
-        return {"error": f"Unknown source: {source_kind}"}
-
-    import hashlib
-    import uuid
 
     async with pool.acquire() as conn:
         async for artifact in plugin.fetch(config):
@@ -82,7 +81,10 @@ async def backfill_source(
 
                 ingested += 1
             except Exception:
+                # One bad artifact must not abort the whole backfill, but it
+                # must never be swallowed silently either.
                 errors += 1
+                logger.exception("backfill.artifact_failed uri=%s", artifact.uri)
 
     elapsed = time.time() - start
     return {
@@ -93,34 +95,3 @@ async def backfill_source(
         "docs_per_second": round(ingested / elapsed, 2) if elapsed > 0 else 0,
         "dry_run": dry_run,
     }
-
-
-async def main() -> None:
-    """CLI entry point for backfill."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Topos historical backfill")
-    parser.add_argument("--source", default="diavgeia")
-    parser.add_argument("--limit", type=int, default=100)
-    parser.add_argument("--org", default="")
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
-
-    pool = await asyncpg.create_pool(get_settings().db_dsn, min_size=1, max_size=2)
-    try:
-        result = await backfill_source(
-            pool,
-            args.source,
-            max_pages=args.limit // 50 + 1,
-            org=args.org,
-            dry_run=args.dry_run,
-        )
-        print(f"Backfill complete: {result}")
-    finally:
-        await pool.close()
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(main())

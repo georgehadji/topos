@@ -202,8 +202,11 @@ vector rerank → optional graph expansion → RRF fusion.
 
 The dominant technical risk. Never assume English-grade accuracy.
 
-- Postgres ships **no Greek stemmer**. `greek_cfg` is a custom config built from `unaccent` +
-  hunspell `el_GR`, with `simple` + trigram as fallback. Verify quality; do not assume.
+- Postgres 16 **does** ship a Greek snowball stemmer. `greek_cfg` is `unaccent` +
+  `el_gr_stem` (snowball `greek`) + `simple` as fallback, set by migration 006. It folds
+  inflection and accents: `δρόμου`/`δρόμος` → `δρομ`, `Θεσσαλονίκης`/`Θεσσαλονίκη` → `θεσσαλονικ`.
+  The earlier hunspell `el_GR` dictionary never stemmed — Debian ships it as a flag-less
+  expanded word list — so `greek_cfg` did accent folding only until 006. Verify quality; do not assume.
 - Toponyms: genitive→nominative (`Εγνατίας`→`Εγνατία`), accent folding, Latin transliteration,
   informal neighbourhoods (`Τούμπα` / `Άνω Τούμπα`) as curated fuzzy polygons.
 - Geocoding returns `(geom, confidence, granularity)` — never a bare point. The UI draws the

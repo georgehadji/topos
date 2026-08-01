@@ -109,4 +109,3 @@ def test_geocoding_with_numbers_and_suffixes() -> None:
     res3 = geocode("Τσιμισκή 12")
     assert res3 is not None
     assert res3.granularity == GeoGranularity.STREET
-

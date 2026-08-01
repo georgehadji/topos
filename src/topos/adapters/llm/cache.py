@@ -31,7 +31,12 @@ class Cache:
     ) -> dict[str, Any]:
         cache_key = hashlib.sha256(
             json.dumps(
-                {"prompt": prompt, "model": model, "format": response_format},
+                {
+                    "prompt": prompt,
+                    "model": model,
+                    "format": response_format,
+                    "tools": kwargs.get("tools"),
+                },
                 sort_keys=True,
             ).encode()
         ).hexdigest()

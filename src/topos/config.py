@@ -21,7 +21,15 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="mistralai/mistral-large-2512")
     llm_monthly_budget_eur: float = Field(default=250.0)
 
+    # xAI direct (primary when llm_provider="xai")
+    xai_api_key: str = Field(default="")
+    xai_base_url: str = Field(default="https://api.x.ai/v1")
+    llm_fallback_model: str = Field(default="")  # OpenRouter slug e.g. "x-ai/grok-4.5"
+
     log_level: str = Field(default="INFO")
+
+    # MCP server auth
+    mcp_api_key: str = Field(default="")
 
     # OIDC auth (slice 1.11)
     oidc_discovery_url: str = Field(default="")

@@ -106,9 +106,49 @@ See §9. Reduces vector count by ~20× and is the reason pgvector suffices.
 non-EU-hosted, which conflicts with constraint L8 (EU residency) once personal data is in
 scope. Runtime inference uses an EU-resident endpoint. See §10.
 
-### ADR-012 — No citizen submission channel before Phase 3
-It carries the largest legal surface (L4 erasure, moderation, defamation), the largest abuse
-surface (astroturfing), and the least early value. Public sources alone justify the product.
+### ADR-012 — X Search as a real-time social source
+**Decision:** use xAI Grok's `x_search` tool (via the Responses API) as a source
+discovery channel for real-time citizen-reported problems on X (Twitter), feeding
+discovered posts as `PluginArtifact` rows into the existing pipeline.
+**Problem:** Greek citizens report infrastructure problems (power outages, water
+breaks, road damage, flooding) on X hours or days before they appear in any
+official document. The six existing source plugins are blind to this signal.
+**Rejected:**
+- *Manual X monitoring*: time-consuming, doesn't scale, and the analyst can't
+  monitor 24/7.
+- *X API direct integration*: the X/Twitter API v2 requires a separate paid
+  tier and has complex rate limits. Grok's `x_search` tool abstracts this away
+  and provides semantic search + image/video understanding.
+- *Using Sonar for X discovery*: Sonar does not search X. Only Grok's
+  `x_search` tool provides X access.
+**Consequence:** requires the Responses API (`/v1/responses`), which is a
+different endpoint from the existing Chat Completions stack. This adds a new
+code path in `adapters/llm/xai.py`. The `x_search` tool call costs are
+included in Grok's per-token pricing ($2/$6 per M tokens). Each X search
+invocation includes ~500 search-result tokens in context.
+**Reversibility:** high — a source plugin is a registration in `__init__.py`;
+removing it stops discovery. The `XaiProvider` is unused if not configured.
+
+### ADR-012s — Sonar web discovery as a supplementary source
+**Decision:** use Perplexity Sonar (via OpenRouter) as a source-discovery channel that
+queries Greek web domains with domain- and recency-filtered searches, feeding discovered
+URLs as `PluginArtifact` rows into the existing pipeline.
+**Problem:** the six existing source plugins (Διαύγεια, ΚΗΜΔΗΣ, ΦΕΚ, ΔΕΔΔΗΕ, municipality RSS,
+news RSS) do not cover all sites where citizen-affecting problems are reported — local blogs,
+community forums, regional news subdomains, NGO reports. Adding a plugin per site does not
+scale; a search-gated discovery channel fills the gap structurally.
+**Rejected:**
+- *Grok Web Search tool* (for this role): Grok's `web_search` is a tool the model may or
+  may not call. Sonar's search is architectural — it *always* retrieves before answering,
+  making every output citation-grounded by construction. This aligns with Topos's L5 mandate
+  (span traceability for every claim).
+- *Manual URL addition*: does not scale and depends on the analyst knowing where to look.
+- *Crawling raw web*: requires a crawler to operate and manage; the per-URL approach via
+  search is lighter and respects robots.txt via the search engine.
+**Consequence:** costs ~$0.01-0.03 per Sonar query (varies by search context size). At weekly
+cadence with 3 queries this is ~$0.12-0.36/week — well within the €250/month LLM budget.
+**Reversibility:** high — a source plugin is just a registration in `__init__.py`; removing it
+stops the discovery without affecting existing pipeline rows.
 
 ---
 
@@ -119,6 +159,58 @@ Airflow · microservices · system-wide CQRS · saga orchestration · GraphQL at
 (REST is enough for one first-party client; GraphQL is a Phase 3 item when third parties
 appear) · a separate "agent framework" (see §10) · social media ingestion (L3; net-negative
 until the API terms are re-verified).
+
+### ADR-013 — Analyst Q&A via collection snapshots, not live MCP
+**Decision:** implement the "one agentic component (grounded analyst Q&A)" as a
+periodic export pipeline that uploads structured problem/claim data to a Grok
+collection, then accepts natural-language questions via a new API endpoint that
+calls Grok with ``collections_search`` + ``web_search`` tools.
+**Problem:** users need to ask analytical questions like *"What are the
+highest-priority unresolved problems in Kalamaria?"* without writing SQL. The
+architecture explicitly reserves space for this component but does not specify
+the mechanism.
+**Rejected:**
+- *Live database access via MCP* (Phase 4): architecturally cleaner but heavier
+  — requires building an MCP server with auth, tool definitions, and SSE
+  transport. Phase 3 is a ponytail-mode precursor that proves the Q&A patterns
+  before investing in MCP infrastructure.
+- *Direct LLM chat without context*: the model has no access to Topos's
+  problem database and would hallucinate or give generic answers. Grounding
+  requires document-level retrieval.
+- *RAG over raw documents*: too many tokens and too much noise. The export
+  pipeline pre-digests problems and claims into a compact structured format.
+**Consequence:** data must be exported periodically (daily or on-demand via CLI).
+At 10k problems + 50k claims the export is ~5-10 MB, trivially uploadable.
+PII filtering must strip natural-person data from exports (L1 audit).
+**Reversibility:** medium — the export pipeline and endpoints are new code but
+use existing tables. If Phase 4 replaces this, the Phase 3 code is removed with
+no schema changes.
+
+### ADR-014 — MCP server over HTTP/SSE for live database access
+**Decision:** implement a Remote MCP server at ``/mcp/`` that exposes
+read-only Topos database tools (search, detail, pipeline status, scoring,
+sources) via the Model Context Protocol over HTTP/SSE, authenticated with a
+bearer token.
+**Problem:** Phase 3's snapshot-export approach is inherently stale. Data
+changes between exports. Live database access via MCP enables Grok to answer
+questions against current data without periodic export cycles. The architecture
+explicitly reserves space for this as the "one agentic component."
+**Rejected:**
+- *Snapshot-only approach (Phase 3)*: retained as the ponytail-mode precursor.
+  Phase 4 replaces it when patterns are proven.
+- *GraphQL endpoint*: MCP is purpose-built for LLM tool access — no schema
+  negotiation, no client-side federation, no SDL. JSON-RPC over SSE is
+  simpler and directly supported by xAI's Remote MCP Tools.
+- *WebSocket transport*: not supported by xAI's MCP client (only Streaming HTTP
+  and SSE). SSE is the lowest-common-denominator choice.
+- *Write-back tools*: deferred. Read-only only for Phase 4. Write tools
+  (approve, flag) require an additional ADR and the L6 approval gate design.
+**Consequence:** adds a new interface layer. Tool *descriptions* contain no
+PII. Tool *results* contain filtered problem summaries — no raw document text
+or natural-person names. L8 compliance maintained by keeping the MCP server
+on EU infrastructure. Requires ``TOPOS_MCP_API_KEY`` env var.
+**Reversibility:** high — an MCP router is a FastAPI mount. Removing it
+stops MCP access. No database changes.
 
 ---
 

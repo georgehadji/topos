@@ -54,8 +54,20 @@ def _find_pg_host() -> str:
     return "127.0.0.1"
 
 
-HOST = _find_pg_host()
-DSN = f"postgresql://topos:devonly@{HOST}:5432/topos"
+def _dsn() -> str:
+    """Where the contract-test PostgreSQL lives.
+
+    An explicit DSN wins and skips discovery entirely — it is the only way to
+    reach a Postgres on a non-default port (e.g. when 5432 on the host is
+    already taken by another instance). Same env-first shape as test_blob.py.
+    """
+    explicit = os.environ.get("TOPOS_TEST_PG_DSN")
+    if explicit:
+        return explicit
+    return f"postgresql://topos:devonly@{_find_pg_host()}:5432/topos"
+
+
+DSN = _dsn()
 
 
 @pytest.fixture(autouse=True)

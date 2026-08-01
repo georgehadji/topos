@@ -16,10 +16,10 @@ from typing import Any
 
 import asyncpg
 
-from topos.adapters.geocode import geocode
 from topos.domain.types import PipelineRow, PipelineState
 from topos.service.extraction import extract_artifact
 from topos.service.mentions import persist_extraction
+from topos.service.ports import Geocoder
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 class PipelineHandlers:
     """Production pipeline handlers linked to each FSM state."""
 
-    def __init__(self, pool: asyncpg.Pool, llm_client: Any) -> None:
+    def __init__(self, pool: asyncpg.Pool, llm_client: Any, geocoder: Geocoder) -> None:
         self.pool = pool
         self.llm_client = llm_client
+        self.geocoder = geocoder
 
     async def handle_fetched(self, row: PipelineRow) -> None:
         """FETCHED -> TEXTIFIED.
@@ -189,7 +190,7 @@ class PipelineHandlers:
                     toponym = claim["predicate"]
 
                 # Run geocoding lookup
-                geo_res = geocode(toponym)
+                geo_res = self.geocoder(toponym)
                 if geo_res:
                     # Update problem coordinate
                     # Find problem linked to this claim

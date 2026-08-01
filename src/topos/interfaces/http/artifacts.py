@@ -56,12 +56,13 @@ async def ingest_artifacts(
             aid = ArtifactId(uuid_mod.uuid4())
             sha256 = hashlib.sha256(artifact.data).digest()
 
-            await conn.execute(
+            actual_aid = await conn.fetchval(
                 """
                 INSERT INTO artifact
                   (id, source_id, uri, sha256, blob_key, mime, bytes, fetched_at)
                 VALUES ($1::uuid, 'diavgeia', $2, $3::bytea, $1::text, $4, $5, now())
-                ON CONFLICT (source_id, uri, sha256) DO NOTHING
+                ON CONFLICT (source_id, uri, sha256) DO UPDATE SET source_id = EXCLUDED.source_id
+                RETURNING id
                 """,
                 aid,
                 artifact.uri,
@@ -76,7 +77,7 @@ async def ingest_artifacts(
                 VALUES ($1::uuid, 'fetched'::pipe_state)
                 ON CONFLICT (artifact_id) DO NOTHING
                 """,
-                aid,
+                actual_aid,
             )
             count += 1
 

@@ -16,6 +16,8 @@ from topos.interfaces.http.recommendations import router as recommendations_rout
 from topos.interfaces.http.review import router as review_router
 from topos.interfaces.http.search import router as search_router
 from topos.interfaces.http.webhooks import router as webhooks_router
+from topos.interfaces.mcp import router as mcp_router
+from topos.interfaces.mcp import tools as mcp_tools  # noqa: F401 — registers tool handlers
 from topos.telemetry import configure_logging
 
 settings = get_settings()
@@ -53,6 +55,10 @@ app.include_router(search_router)
 app.include_router(review_router)
 app.include_router(graphql_gql_router, prefix="/graphql")
 app.include_router(webhooks_router)
+app.include_router(mcp_router)
+
+# Store MCP API key in app state for auth middleware
+app.state.mcp_api_key = settings.mcp_api_key
 
 # Mount built React SPA if available (must be last — catches all paths)
 _web_dist = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "web", "dist")

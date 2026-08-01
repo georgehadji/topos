@@ -36,7 +36,7 @@ async def list_tasks(
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, kind, payload, priority, claimed_by, claimed_until, created_at
+            SELECT id, kind, payload, priority, claimed_by, claimed_until
             FROM review_task
             WHERE resolved_at IS NULL
             ORDER BY priority, id

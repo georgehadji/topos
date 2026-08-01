@@ -2,169 +2,195 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg)](https://fastapi.tiangolo.com)
-[![React 19](https://img.shields.io/badge/React-19.0-61dafb.svg)](https://react.dev)
+[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev)
 [![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16%20%2B%20PostGIS-336791.svg)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ed.svg)](https://www.docker.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Topos is a complete, production-grade **Constituency Problem Intelligence Platform** designed specifically for the **Α΄ Θεσσαλονίκης** electoral district. It ingests public sector documents, official government bulletins (ΦΕΚ), electricity outages (ΔΕΔΔΗΕ), municipal records (Διαύγεια, ΚΗΜΔΗΣ), and local news RSS feeds, extracts citizen-affecting issues using state-of-the-art LLM processing, geolocates them on a map, and structures them into an interactive knowledge graph with automatic Greek explanations.
+Constituency problem intelligence for the **Α΄ Θεσσαλονίκης** electoral district.
 
----
+Ingests Greek public-sector and news sources — Διαύγεια, ΚΗΜΔΗΣ, ΦΕΚ, ΔΕΔΔΗΕ outages,
+municipal feeds, local news RSS, X/social — extracts citizen-affecting problems with an
+LLM, geolocates and deduplicates them, scores them, and serves the result as a map, a
+knowledge graph, and an agent-callable API. Every derived fact keeps a byte-range span
+back to its source document.
 
-## 🧭 System Architecture & Design
-
-Topos is built with a strictly enforced **Clean Architecture (Ports & Adapters)** model. This guarantees that all domain logic remains purely functional, deterministic, and easily verifiable.
-
-```
-       ┌─────────────────────────────────────────────────────────┐
-       │                       INTERFACES                        │
-       │     FastAPI Web Server   │   SKIP-LOCKED Worker CLI     │
-       └────────────────────┬──────────────┬─────────────────────┘
-                            │              │
-                            ▼              ▼
-       ┌─────────────────────────────────────────────────────────┐
-       │                        SERVICES                         │
-       │             FSM State Coordinator (step)                │
-       └────────────────────┬──────────────┬─────────────────────┘
-                            │              │
-                            ▼              ▼
-       ┌─────────────────────────────────────────────────────────┐
-       │                         ADAPTERS                        │
-       │  S3/MinIO Blob │ Postgres (asyncpg) │ OpenRouter LLM   │
-       └────────────────────┬──────────────┬─────────────────────┘
-                            │              │
-                            ▼              ▼
-       ┌─────────────────────────────────────────────────────────┐
-       │                          DOMAIN                         │
-       │       Pure Types │ ER Similarity │ Evidence Merges      │
-       └─────────────────────────────────────────────────────────┘
-```
-
-### Key Technical Pillars:
-*   **Pure Functional Core:** Pure domain modules under `src/topos/domain/` contain zero asynchronous structures, system clock calls, randomness, or third-party database imports, as enforced by `import-linter`.
-*   **SKIP-LOCKED Concurrent Worker:** The pipeline background processor uses safe PostgreSQL transaction claiming with `SKIP LOCKED` queries to run multiple workers concurrently without state-machine race conditions.
-*   **Greek FTS Alignment:** A hand-tuned, high-performance PostgreSQL text search configuration (`greek_cfg`) normalizes Greek accentuation and inflection to yield a **+100.0% recall improvement** over generic index searches.
-*   **Resilient Backup & PITR:** Streaming containerized `pg_basebackup -X fetch` runs on a single host with S3 offloading, enabling point-in-time recovery (PITR) with verified **55-second disaster recovery drills**.
+**Deeper reference:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (the contract) ·
+[`AGENTS.md`](AGENTS.md) (working rules) · [`docs/adr/`](docs/adr) (decisions) ·
+[`docs/PROGRESS.md`](docs/PROGRESS.md) (measured results).
 
 ---
 
-## 🛠️ Technology Stack
+## 🧭 Architecture
 
-### Backend
-*   **Language:** Python 3.12 (Strict typing via MyPy)
-*   **API Framework:** FastAPI
-*   **Database:** PostgreSQL 16 + PostGIS + pgvector (Raw queries using `asyncpg`)
-*   **Migration Manager:** Alembic (Hand-written, declarative schema versions)
-*   **Object Store:** S3-compatible MinIO (using `aioboto3` client)
-*   **Telemetry:** OpenTelemetry, Prometheus Metrics
+Clean Architecture (ports & adapters). Dependencies point inward only; `import-linter`
+enforces it in CI.
 
-### Frontend
-*   **Framework:** React 19 SPA (using Vite)
-*   **Mapping:** MapLibre GL
-*   **Styling:** Modern, layout-responsive UI with custom-themed CSS
-*   **Graph:** Pure SVG force-directed interactive node layout
+```
+interfaces/   FastAPI routers, Typer CLI, MCP      → imports service, domain
+service/      Orchestration, ports (Protocol)      → imports domain only
+adapters/     Postgres, S3, LLM, HTTP, geocode     → imports domain
+domain/       Pure types, scoring, ER, FSM         → imports NOTHING from topos.*
+```
+
+- **Pure functional core.** `domain/` has no IO, no `async`, no clock, no randomness.
+  Tested with literal inputs and outputs, never mocks.
+- **SKIP LOCKED worker.** Workers claim one pipeline row atomically, advance one state,
+  commit. Every step idempotent on `(artifact_id, state)`, so concurrent workers are safe.
+- **Pipeline:** `fetched → textified → chunked → extracted → geocoded → resolved → indexed → done`.
+- **No ORM.** Raw parameterized SQL via `asyncpg`; migrations are hand-written.
+- **Greek is the dominant risk.** `greek_cfg` folds accents *and* inflection via the
+  built-in Greek snowball stemmer: `δρόμου`/`δρόμος` → `δρομ`, `Θεσσαλονίκης`/`Θεσσαλονίκη`
+  → `θεσσαλονικ`. A query for `ύδρευση` matches an indexed `ύδρευσης`. Migration 006 put
+  this in place; before it, the hunspell dictionary silently did accent folding only.
+- **PITR verified.** `pg_basebackup -X fetch` to S3; restore drill completed in **55s**.
 
 ---
 
-## 🚀 Quickstart Guide
+## 🛠️ Stack
 
-Ensure you have **Docker Desktop**, **Node.js (v18+)**, and **Python 3.12** with `uv` installed.
+**Backend** — Python 3.12 (`mypy --strict`) · FastAPI · PostgreSQL 16 (PostGIS, pgvector,
+pg_trgm, unaccent) via `asyncpg` · Alembic (hand-written) · MinIO/S3 via `aioboto3` ·
+Strawberry GraphQL · OpenTelemetry + Prometheus.
 
-### 1. Spin up the Infrastructure
-Bring up PostgreSQL, MinIO, the API server, and the state-machine background worker:
-```bash
-make up
-```
+**Frontend** (`web/`) — React 19 · Vite 8 · TypeScript 6 · MapLibre GL 6 · oxlint.
+Force-directed graph is plain SVG, no graph library.
 
-### 2. Apply Database Migrations
-Deploy hand-written Alembic migrations to setup core tables and full-text configurations:
-```bash
-make upgrade
-```
-
-### 3. Run the Frontend Development Server
-Navigate to the web project, install dependencies, and start Vite:
-```bash
-cd web
-npm install
-npm run dev
-```
+PostgreSQL is the **only** datastore. No Redis, Kafka, Neo4j, Qdrant or Celery.
 
 ---
 
-## 🌐 Navigating the Platform
+## 🚀 Quickstart
 
-Once the platform is running locally, access the various services at these endpoints:
+Needs **Docker Desktop**, **Node 18+**, **Python 3.12** with [`uv`](https://docs.astral.sh/uv/).
 
-*   **React User Dashboard:** [`http://localhost:5173`](http://localhost:5173)  
-    *Browse ranked mentions, filter by category and spatial radius, approve and resolve review tasks, or traverse the constituency's political knowledge graph.*
-*   **Interactive Swagger API Docs:** [`http://localhost:8000/docs`](http://localhost:8000/docs)  
-    *Explore fully typed endpoints, trigger manual artifact ingestions, and inspect live service health.*
-*   **MinIO Console (S3 Browser):** [`http://localhost:9001`](http://localhost:9001)  
-    *Log in using Username: `topos` | Password: `devonlydevonly` to browse raw ingested PDF/text artifacts.*
+```bash
+uv sync                              # 1. install Python deps
+cp .env.example .env                 # 2. config — set TOPOS_LLM_API_KEY for real extraction
+docker compose up -d --build         # 3. postgres + minio + api + worker
+uv run alembic upgrade head          # 4. apply migrations
+uv run topos-cli seed                # 5. load the source registry
+uv run topos-cli health --json       # 6. verify — exits 1 if the database is unreachable
+```
+
+`make up` / `make upgrade` / `make seed` are shorthands for steps 3–5. The `uv` commands
+above are the portable form — `make` is not installed everywhere (notably Windows).
+
+Then the frontend:
+
+```bash
+cd web && npm install && npm run dev
+```
+
+> **Port 5432 already taken?** The compose file publishes Postgres on `5432:5432`. If
+> another instance owns that port, map it elsewhere with a compose override and set
+> `TOPOS_DB_DSN` to match.
+
+Without an LLM key the worker falls back to a built-in mock client, so the pipeline still
+runs end to end offline.
 
 ---
 
-## 🧪 Quality Assurance & Validation Gates
+## 🌐 Endpoints
 
-Topos enforces a zero-warning quality gate before any pull request can be merged.
+| URL | What |
+|---|---|
+| [`localhost:5173`](http://localhost:5173) | React dashboard — ranked mentions, map filters, review queue, knowledge graph |
+| [`localhost:8000/docs`](http://localhost:8000/docs) | Swagger UI |
+| `localhost:8000/graphql` | GraphQL (Strawberry) |
+| `localhost:8000/mcp` | **MCP over JSON-RPC 2.0** — see below |
+| `localhost:8000/healthz` | Liveness |
+| [`localhost:9001`](http://localhost:9001) | MinIO console — `topos` / `devonlydevonly` |
 
-### Run the Fully Automated Quality Check:
-```bash
-make check
-```
-This is the same command executing in our **GitHub Actions CI/CD pipeline** to guarantee:
-1.  **Format Integrity:** Clean checks on `ruff format` and `ruff check`.
-2.  **Type Safety:** Strict, zero-warning static checking via `mypy`.
-3.  **Architectural Layout:** Validation of the domain dependency layout via `import-linter`.
-4.  **Surgical Sizing:** Verification that no Python source file exceeds 400 lines (`make filesize`).
-5.  **Schema Alignment:** Check that physical database tables completely align with Alembic migrations.
-
-### Run the Automated Tests:
-```bash
-# Run the complete test suite (96 passing tests)
-uv run pytest
-
-# Run domain unit tests only (pure, fast, no external network or docker containers)
-make test-unit
-```
+REST: `/api/search`, `/api/graph/problems`, `/api/recommendations`, `/api/review/tasks`,
+`/artifacts`, `/api/webhooks`.
 
 ---
 
-## 📋 Comprehensive CLI Reference
+## 📋 CLI
 
-The `topos-cli` tool provides critical administrative and diagnostic operations:
+`topos-cli` is the headless entrypoint. Every command is non-interactive, needs no TTY,
+and takes `--json` to emit one parseable object on stdout. Exit status is 0 on success and
+1 on failure, so `&&` chaining is safe.
 
 ```bash
-# Calculate real-time LLM cost expenditures from the extraction log
-uv run topos-cli cost --month current
+# Discovery — no database, no network needed
+uv run topos-cli --help
+uv run topos-cli sources --json          # every registered source + its config fields
 
-# Manually register a new OIDC tenant
-uv run topos-cli tenant create "Thessaloniki Municipality"
+uv run topos-cli health --json           # config + DB reachability; exits 1 if down
+uv run topos-cli pipeline --json         # artifact count per pipeline state
+uv run topos-cli seed                    # load the source registry (idempotent)
 
-# Re-trigger historical backfills with dry-run protection
-uv run topos-cli backfill --source diavgeia --limit 100 --dry-run
+# Ingest. --dry-run fetches and counts without writing.
+uv run topos-cli backfill --source diavgeia --limit 100 --dry-run --json
+uv run topos-cli backfill --source news --set max_per_feed=20   # override any config field
+
+uv run topos-cli cost --month current --json     # LLM spend from extraction_run
+uv run topos-cli export all --output-dir ./exports --json
+
+# Pipeline worker. --drain processes everything pending and exits 0;
+# without it the loop runs until SIGINT/SIGTERM.
+uv run topos-cli worker --drain
+uv run topos-cli worker
+uv run topos-cli serve --port 8000       # FastAPI HTTP API
 ```
+
+**Agents** can drive Topos over MCP at `POST /mcp`, which exposes `search_problems`,
+`get_problem_detail`, `get_pipeline_status`, `list_sources` and `get_scoring_breakdown`.
 
 ---
 
-## 🛡️ Disaster Recovery & Backups
+## 🧪 Quality gate
 
-Topos is built for zero-operational-overhead, hosting single-node resilient infrastructure backed up directly to remote S3 targets.
-
-### Initiate a Base Backup:
-To capture a point-in-time consistent transaction snapshot:
 ```bash
-./infra/backup.sh
+make check      # what CI runs. Merge is blocked on this.
 ```
 
-### Perform a point-in-time Recovery (PITR) Drill:
-To test and verify a complete database restoration locally (completes in less than 60 seconds):
+| Step | Gate |
+|---|---|
+| `make lint` | `ruff format --check` + `ruff check` |
+| `make types` | `mypy --strict`, zero errors |
+| `make layers` | `import-linter` — 6 architecture contracts |
+| `make filesize` | No `.py` over 400 lines |
+| `make test` | Full suite |
+| `make migrations` | `alembic upgrade head`, then assert `alembic current` reports `(head)` |
+
+`make migrations` deliberately does **not** use `alembic check`: that is autogenerate-based
+and needs a `MetaData` object, which an ORM-less codebase does not have.
+
 ```bash
-./infra/restore-drill.sh
+uv run pytest                              # full suite: 132 unit + 9 contract
+uv run pytest tests/unit                   # pure, fast, no containers
+uv run pytest tests/contract -m contract   # adapters against a real PostgreSQL
+```
+
+Contract tests need Postgres and MinIO up, and MinIO needs the `topos-artifacts` bucket.
+They read `TOPOS_TEST_PG_DSN` if set, otherwise they discover the compose host on `:5432`.
+
+> Contract tests delete rows for the `test` / `diavgeia` / `fek` / `deddhe` sources, so a
+> full `pytest` run empties dev data. Re-populate with `topos-cli backfill` +
+> `topos-cli worker --drain`.
+
+> `tests/golden/` is currently empty. AGENTS.md requires golden fixtures for Greek
+> behaviour — that is the largest open test gap.
+
+---
+
+## 🛡️ Backups & recovery
+
+Single node, streamed to S3.
+
+```bash
+./infra/backup.sh          # base backup
+./infra/restore-drill.sh   # timed PITR drill — run quarterly, record in docs/PROGRESS.md
 ```
 
 ---
 
 ## ⚖️ License
-Topos is licensed under the **MIT License**. See [LICENSE](LICENSE) for more details.
+
+**Proprietary — commercial project. All rights reserved.**
+
+Not open source. No redistribution, and no use outside the project without written
+permission. No `LICENSE` file is committed yet; add the commercial terms before any
+external distribution.

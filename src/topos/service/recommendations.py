@@ -35,7 +35,10 @@ class RecommendationService:
             conditions.append(f"p.status = ${len(params) + 1}")
             params.append(status)
 
-        sql = f"""  # noqa: S608
+        # NB: the S608 exemption for this f-string lives in pyproject's
+        # per-file-ignores. It must not go inside the quotes — Postgres would
+        # receive the `#` as SQL.
+        sql = f"""
             SELECT p.id::text, p.title, p.category,
                    COALESCE(s.priority, 0) AS priority,
                    s.impact, s.urgency,
@@ -44,13 +47,17 @@ class RecommendationService:
                    p.approved_by, p.approved_at, p.exported_at
             FROM problem p
             LEFT JOIN LATERAL (
-              SELECT priority, impact, urgency
+              -- score_snapshot keeps the whole scorecard in one jsonb column
+              -- (001_core); these are not flat columns.
+              SELECT (scores->>'priority')::numeric AS priority,
+                     (scores->>'impact')::numeric   AS impact,
+                     (scores->>'urgency')::numeric  AS urgency
               FROM score_snapshot
               WHERE problem_id = p.id
               ORDER BY at DESC
               LIMIT 1
             ) s ON TRUE
-            WHERE {conditions}
+            WHERE {" AND ".join(conditions)}
             ORDER BY priority DESC NULLS LAST
             LIMIT ${len(params) + 1}
         """

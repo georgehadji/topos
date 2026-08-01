@@ -9,39 +9,10 @@ and measures search recall metrics.
 from __future__ import annotations
 
 import asyncio
-import socket
-import subprocess
 
 import asyncpg
 
 from topos.config import get_settings
-
-
-def _find_pg_host() -> str:
-    """Find the IP where docker-compose postgres is reachable."""
-    try:
-        result = subprocess.run(
-            ["wsl", "--", "ip", "-4", "addr", "show", "eth0"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        for line in result.stdout.splitlines():
-            if "inet " in line:
-                ip = line.strip().split()[1].split("/")[0]
-                s = socket.socket()
-                s.settimeout(1)
-                try:
-                    s.connect((ip, 5432))
-                    s.close()
-                    return ip
-                except (OSError, TimeoutError):
-                    pass
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-
-    return "127.0.0.1"
 
 
 async def main() -> None:
@@ -50,14 +21,11 @@ async def main() -> None:
         print("Error: TOPOS_DB_DSN is not configured.")
         return
 
-    host = _find_pg_host()
-    # Resolve DSN with the correct host IP
+    # TOPOS_DB_DSN is the single source of truth, exactly as it is for the app
+    # and the workers. Do not rewrite the host: that silently overrode an
+    # explicitly configured port.
     dsn = settings.db_dsn
-    for old_host in ("localhost", "127.0.0.1", "postgres"):
-        if f"@{old_host}:" in dsn:
-            dsn = dsn.replace(f"@{old_host}:", f"@{host}:")
-
-    print(f"Connecting to database at {host}...")
+    print(f"Connecting to {dsn.rsplit('@', 1)[-1]}...")
     conn = await asyncpg.connect(dsn)
 
     try:

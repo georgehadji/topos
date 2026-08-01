@@ -13,9 +13,17 @@ Prerequisites (created in infra/postgres/init/00-extensions.sql):
 Prerequisites (installed in infra/postgres/Dockerfile):
   hunspell-el → el_gr.affix / el_gr.dict in tsearch_data
 
-If hunspell-el is not installed, this migration still succeeds: it creates the
-dictionary and config, but the dictionary will fall back to the `simple`
-dictionary at query time. Measure quality with eval/greek_fts_probe.py (0.5).
+CORRECTION (see 006_greek_snowball): the two claims below were both wrong.
+
+  1. This migration does NOT survive a missing hunspell-el. The `ispell`
+     template opens and validates DictFile/AffFile at CREATE time, so a fresh
+     `alembic upgrade head` fails here with `could not open dictionary file`.
+  2. Even when installed, `el_gr_hunspell` never stemmed anything. Debian's
+     el_GR.dic is a fully expanded word list carrying no affix flags, so none
+     of the .aff rules can fire. `greek_cfg` did accent folding only.
+
+006 replaces the dictionary with the built-in Greek snowball stemmer. This
+migration is kept as-is so the history replays; do not edit its statements.
 """
 
 from __future__ import annotations

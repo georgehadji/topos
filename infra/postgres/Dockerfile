@@ -18,8 +18,16 @@ RUN apt-get update \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
 
-# Greek hunspell dictionary → Postgres shared dir, for the `greek_cfg` text search
-# configuration created in migration 002. See ARCHITECTURE.md §Greek.
+# Greek hunspell dictionary → Postgres shared dir.
+#
+# SUPERSEDED, BUT DO NOT DELETE. Migration 006 replaced hunspell with the
+# built-in Greek snowball stemmer: Debian's hunspell-el .dic is a fully expanded
+# word list with no affix flags, so it could never stem — see 006's docstring.
+# These files must stay because migration 002 still runs on a fresh database and
+# does `CREATE TEXT SEARCH DICTIONARY ... TEMPLATE = ispell`, which opens and
+# validates the files at CREATE time. Remove them and `alembic upgrade head`
+# fails at 002 with `could not open dictionary file`.
+#
 # NOTE: Postgres expects .affix/.dict with UTF-8 content and lowercase names.
 # Debian's hunspell-el ships ISO-8859-7; Postgres needs UTF-8.
 RUN set -eux; \

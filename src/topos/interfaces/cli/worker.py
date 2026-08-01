@@ -15,6 +15,7 @@ from contextlib import suppress
 import asyncpg
 
 from topos.adapters.db.pipeline_repo import PipelineRepo
+from topos.adapters.geocode import geocode
 from topos.adapters.llm import build_llm_client
 from topos.config import get_settings
 from topos.service.handlers import PipelineHandlers
@@ -24,10 +25,16 @@ from topos.telemetry import configure_logging, get_logger
 log = get_logger("worker")
 
 
-async def main() -> None:
+async def main(*, drain: bool = False) -> None:
+    """Run the pipeline claim loop.
+
+    *drain* makes the worker exit as soon as the queue has no claimable work,
+    instead of idling forever. That is the mode a batch job or an agent wants:
+    "process what is pending, then give me my shell back".
+    """
     settings = get_settings()
     configure_logging(settings.log_level)
-    log.info("worker.booting", db_dsn_configured=bool(settings.db_dsn))
+    log.info("worker.booting", db_dsn_configured=bool(settings.db_dsn), drain=drain)
 
     if not settings.db_dsn:
         log.error("worker.missing_dsn")
@@ -70,7 +77,7 @@ async def main() -> None:
 
         llm_client = MockLlmClient()
 
-    handlers = PipelineHandlers(pool, llm_client)
+    handlers = PipelineHandlers(pool, llm_client, geocode)
 
     shutdown_event = asyncio.Event()
 
@@ -92,6 +99,10 @@ async def main() -> None:
             if work_done:
                 # If we processed a row, check for more work immediately
                 continue
+
+            if drain:
+                log.info("worker.drained")
+                break
 
             # Queue was empty; sleep briefly and wait before checking again
             try:

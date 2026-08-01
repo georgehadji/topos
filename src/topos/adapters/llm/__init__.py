@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from topos.adapters.llm.budget import BudgetGuard
 from topos.adapters.llm.cache import Cache
+from topos.adapters.llm.fallback import FallbackProvider
 from topos.adapters.llm.provider import OpenRouterProvider
 from topos.adapters.llm.retry import Retry
 from topos.adapters.llm.telemetry import Telemetry
@@ -40,12 +41,14 @@ class StructuredLlmWrapper:
         model: str,
         schema: type[BaseModel] | None = None,
         response_format: dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> Any:
         raw_result = await self._inner.complete(
             prompt=prompt,
             model=model,
             response_format=response_format,
+            tools=tools,
             **kwargs,
         )
         if schema is not None:
@@ -67,13 +70,34 @@ def build_llm_client(
 
     The returned object satisfies ``service.ports.LlmClient`` structurally
     — it has an ``async def complete(...)`` method.
+
+    When ``llm_provider`` is ``"xai"``, the innermost provider is a
+    ``FallbackProvider`` that tries xAI direct first and OpenRouter second.
+    Otherwise a single ``OpenRouterProvider`` is used.
     """
     s = settings or Settings()
 
-    provider: Any = OpenRouterProvider(
-        api_key=s.llm_api_key,
-        base_url=s.llm_base_url,
-    )
+    if s.llm_provider == "xai":
+        primary = OpenRouterProvider(
+            api_key=s.xai_api_key,
+            base_url=s.xai_base_url,
+        )
+        fallback = OpenRouterProvider(
+            api_key=s.llm_api_key,
+            base_url=s.llm_base_url,
+        )
+        fallback_model = s.llm_fallback_model or s.llm_model
+        provider: Any = FallbackProvider(
+            primary=primary,
+            fallback=fallback,
+            primary_model=s.llm_model,
+            fallback_model=fallback_model,
+        )
+    else:
+        provider = OpenRouterProvider(
+            api_key=s.llm_api_key,
+            base_url=s.llm_base_url,
+        )
 
     # Decorator stack: Telemetry → Retry → Cache → BudgetGuard
     # Innermost is Telemetry (writes extraction_run first)

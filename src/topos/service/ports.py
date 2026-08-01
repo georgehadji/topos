@@ -5,11 +5,13 @@ contract `service-ports-only`.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from topos.domain.geo import GeocodeResult
 from topos.domain.pipeline_fsm import StepOutcome
 from topos.domain.types import ArtifactId, PipelineRow, PipelineState
 
@@ -37,13 +39,56 @@ class LlmClient(Protocol):
         model: str,
         schema: type[BaseModel] | None = None,
         response_format: dict[str, object] | None = None,
+        tools: list[dict[str, object]] | None = None,
     ) -> Any:
         """Send a completion request.
 
         *schema* is a Pydantic model for structured output validation.
         *response_format* can be ``{"type": "json_object"}`` if the provider
         supports it separately from schema validation.
+        *tools* is an optional list of tool definitions (e.g. ``x_search``,
+        ``web_search``). Providers that use the Chat Completions API
+        (``OpenRouterProvider``, ``SonarProvider``, ``FallbackProvider``)
+        ignore this. Providers that use the Responses API (``XaiProvider``)
+        forward it to the tool-calling endpoint.
         """
+
+
+class Geocoder(Protocol):
+    """Greek toponym -> coordinates. Implemented by adapters.geocode (slice 1.8).
+
+    Deliberately a callable protocol: the adapter exposes a module-level
+    ``geocode()`` function, and service/ receives it injected rather than
+    importing it (see .importlinter contract ``service-ports-only``).
+    """
+
+    def __call__(self, toponym: str) -> GeocodeResult | None: ...
+
+
+class SourceArtifact(Protocol):
+    """One raw artifact yielded by a source plugin.
+
+    Structural view of ``adapters.sources.base.PluginArtifact`` — service/
+    reads these fields and never imports the concrete dataclass.
+    """
+
+    @property
+    def uri(self) -> str: ...
+    @property
+    def data(self) -> bytes: ...
+    @property
+    def mime(self) -> str: ...
+
+
+class SourcePlugin(Protocol):
+    """Fetches raw artifacts from one external source.
+
+    Implemented by adapters.sources.* (slice 0.11). service/ never resolves a
+    ``kind`` to a concrete plugin — interfaces/ does that via the registry and
+    injects the constructed plugin.
+    """
+
+    def fetch(self, config: Any) -> AsyncIterator[SourceArtifact]: ...
 
 
 class PipelineRepo(Protocol):

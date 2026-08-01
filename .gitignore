@@ -30,3 +30,8 @@ pgdata/
 miniodata/
 caddydata/
 .reasonix/
+
+# Export output (topos-cli export)
+exports/
+_agent_exports/
+*.jsonl

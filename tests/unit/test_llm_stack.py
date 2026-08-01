@@ -7,16 +7,18 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 import pytest
 from pydantic import BaseModel
 
 from topos.adapters.llm import StructuredLlmWrapper
 from topos.adapters.llm.budget import BudgetExceeded, BudgetGuard
 from topos.adapters.llm.cache import Cache
+from topos.adapters.llm.fallback import FallbackProvider
 
 
 class DummyProvider:
-    def __init__(self, response: dict[str, Any]) -> None:
+    def __init__(self, response: Any) -> None:
         self.response = response
         self.calls = 0
 
@@ -29,7 +31,9 @@ class DummyProvider:
         **kwargs: Any,
     ) -> dict[str, Any]:
         self.calls += 1
-        return self.response
+        if isinstance(self.response, BaseException):
+            raise self.response
+        return self.response  # type: ignore[no-any-return]
 
 
 class SampleModel(BaseModel):
@@ -87,3 +91,135 @@ async def test_cache_hits_memory() -> None:
     res2 = await cache.complete(prompt="Hi", model="test-model")
     assert provider.calls == 1
     assert res1 == res2
+
+
+# ── FallbackProvider tests ───────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fallback_primary_succeeds_skips_fallback() -> None:
+    """When the primary succeeds, fallback is never called."""
+    primary = DummyProvider({"choices": [{"message": {"content": "primary-ok"}}]})
+    fallback = DummyProvider({"choices": [{"message": {"content": "fallback-ok"}}]})
+
+    provider = FallbackProvider(
+        primary=primary,
+        fallback=fallback,
+        primary_model="grok-4.5",
+        fallback_model="x-ai/grok-4.5",
+    )
+    result = await provider.complete(prompt="Test", model="ignored")
+    assert primary.calls == 1
+    assert fallback.calls == 0
+    assert result["choices"][0]["message"]["content"] == "primary-ok"
+
+
+@pytest.mark.asyncio
+async def test_fallback_http_5xx_triggers_fallback() -> None:
+    """When primary raises HTTP 503, fallback returns its answer."""
+    primary = DummyProvider(
+        httpx.HTTPStatusError(
+            "503 Service Unavailable",
+            request=httpx.Request("POST", "https://primary.test"),
+            response=httpx.Response(503),
+        )
+    )
+    fallback = DummyProvider({"choices": [{"message": {"content": "fallback-ok"}}]})
+
+    provider = FallbackProvider(
+        primary=primary,
+        fallback=fallback,
+        primary_model="grok-4.5",
+        fallback_model="x-ai/grok-4.5",
+    )
+    result = await provider.complete(prompt="Test", model="ignored")
+    assert primary.calls == 1
+    assert fallback.calls == 1
+    assert result["choices"][0]["message"]["content"] == "fallback-ok"
+
+
+@pytest.mark.asyncio
+async def test_fallback_http_401_triggers_fallback() -> None:
+    """Auth errors (401) on primary trigger fallback."""
+    primary = DummyProvider(
+        httpx.HTTPStatusError(
+            "401 Unauthorized",
+            request=httpx.Request("POST", "https://primary.test"),
+            response=httpx.Response(401),
+        )
+    )
+    fallback = DummyProvider({"choices": [{"message": {"content": "fallback-auth"}}]})
+
+    provider = FallbackProvider(
+        primary=primary,
+        fallback=fallback,
+        primary_model="grok-4.5",
+        fallback_model="x-ai/grok-4.5",
+    )
+    result = await provider.complete(prompt="Test", model="ignored")
+    assert fallback.calls == 1
+    assert result["choices"][0]["message"]["content"] == "fallback-auth"
+
+
+@pytest.mark.asyncio
+async def test_fallback_both_fail_propagates_error() -> None:
+    """When both primary and fallback fail, the fallback error propagates."""
+    primary = DummyProvider(
+        httpx.HTTPStatusError(
+            "503 Service Unavailable",
+            request=httpx.Request("POST", "https://primary.test"),
+            response=httpx.Response(503),
+        )
+    )
+    fallback = DummyProvider(
+        httpx.HTTPStatusError(
+            "502 Bad Gateway",
+            request=httpx.Request("POST", "https://fallback.test"),
+            response=httpx.Response(502),
+        )
+    )
+
+    provider = FallbackProvider(
+        primary=primary,
+        fallback=fallback,
+        primary_model="grok-4.5",
+        fallback_model="x-ai/grok-4.5",
+    )
+    with pytest.raises(httpx.HTTPStatusError, match="502"):
+        await provider.complete(prompt="Test", model="ignored")
+    assert primary.calls == 1
+    assert fallback.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_fallback_network_error_triggers_fallback() -> None:
+    """ConnectError on primary triggers fallback."""
+    primary = DummyProvider(httpx.ConnectError("Connection refused"))
+    fallback = DummyProvider({"choices": [{"message": {"content": "fallback-net"}}]})
+
+    provider = FallbackProvider(
+        primary=primary,
+        fallback=fallback,
+        primary_model="grok-4.5",
+        fallback_model="x-ai/grok-4.5",
+    )
+    result = await provider.complete(prompt="Test", model="ignored")
+    assert fallback.calls == 1
+    assert result["choices"][0]["message"]["content"] == "fallback-net"
+
+
+@pytest.mark.asyncio
+async def test_fallback_value_error_not_caught() -> None:
+    """Non-network, non-HTTP errors on primary propagate immediately (no fallback)."""
+    primary = DummyProvider(ValueError("bad input"))
+    fallback = DummyProvider({"choices": [{"message": {"content": "should-not-run"}}]})
+
+    provider = FallbackProvider(
+        primary=primary,
+        fallback=fallback,
+        primary_model="grok-4.5",
+        fallback_model="x-ai/grok-4.5",
+    )
+    with pytest.raises(ValueError, match="bad input"):
+        await provider.complete(prompt="Test", model="ignored")
+    assert fallback.calls == 0  # fallback never called
