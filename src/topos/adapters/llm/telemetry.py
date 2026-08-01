@@ -66,6 +66,15 @@ class Telemetry:
         if self._pool is None:
             return
 
+        if artifact_id is None:
+            # extraction_run.artifact_id is NOT NULL and references artifact(id),
+            # so a call with no artifact cannot be recorded here. That is the
+            # normal case for discovery calls (Sonar, X Search), which search the
+            # web rather than process a stored document. Inserting anyway raised
+            # NotNullViolationError inside the decorator stack and took down every
+            # real LLM call — the mock bypassed the stack, so it stayed hidden.
+            return
+
         tokens_in: int | None = None
         tokens_out: int | None = None
         if result is not None:

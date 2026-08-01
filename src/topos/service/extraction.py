@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import suppress
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from topos.domain.extraction import (
@@ -22,6 +22,11 @@ from topos.domain.extraction import (
 from topos.domain.types import ArtifactId
 
 logger = logging.getLogger(__name__)
+
+# claim.confidence is numeric(3,2) NOT NULL and semantically a probability.
+_DEFAULT_CONFIDENCE = Decimal("0.5")
+_MIN_CONFIDENCE = Decimal("0")
+_MAX_CONFIDENCE = Decimal("1")
 
 # Greek text uses Unicode characters that ruff flags as ambiguous.
 # This is intentional — "A' Thessalonikis" is a proper name.
@@ -73,15 +78,22 @@ async def extract_chunk(
     text: str,
     *,
     model: str = "mistralai/mistral-large-2512",
+    artifact_id: ArtifactId | None = None,
+    prompt_ver: str = "1.0.0",
 ) -> ExtractedChunk:
     """Extract claims from a single chunk using the LLM."""
     prompt = _PROMPT_TEMPLATE.format(chunk_text=text)
 
     try:
+        # artifact_id/prompt_ver are consumed by the Telemetry decorator, which
+        # records the call in extraction_run. Without them the row cannot be
+        # written (artifact_id is NOT NULL).
         result = await llm_client.complete(
             prompt=prompt,
             model=model,
             response_format={"type": "json_object"},
+            artifact_id=artifact_id,
+            prompt_ver=prompt_ver,
         )
     except Exception as exc:
         logger.exception("LLM extraction failed for chunk %d: %s", ord, exc)
@@ -135,11 +147,16 @@ def _validate_claims(raw: list[Any], chunk_text: str) -> list[ExtractedClaim]:
         if span_start < 0 or span_end > text_len or span_start >= span_end:
             continue
 
-        confidence: Decimal | None = None
+        # claim.confidence is NOT NULL in the schema, and models routinely omit
+        # the field however firmly the prompt asks for it. An unstated
+        # confidence is not a confident claim, so it defaults to the midpoint
+        # rather than to 1.0.
+        confidence = _DEFAULT_CONFIDENCE
         raw_conf = item.get("confidence")
         if raw_conf is not None:
-            with suppress(ValueError, TypeError):
+            with suppress(ValueError, TypeError, InvalidOperation):
                 confidence = Decimal(str(raw_conf))
+        confidence = min(max(confidence, _MIN_CONFIDENCE), _MAX_CONFIDENCE)
 
         result.append(
             ExtractedClaim(
@@ -171,6 +188,7 @@ async def extract_artifact(
             ord=ord,
             text=text,
             model=model,
+            artifact_id=artifact_id,
         )
         extracted_chunks.append(chunk_result)
 
