@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Sonar web discovery source plugin.
 
 Uses Perplexity Sonar (via OpenRouter) to discover citizen-affecting problems
@@ -11,6 +12,7 @@ processes these normally — ``FETCHED → TEXTIFIED → CHUNKED → EXTRACTED �
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -20,6 +22,9 @@ from topos.adapters.sources.base import PluginArtifact, SourcePlugin
 from topos.adapters.sources.registry import register
 
 logger = logging.getLogger(__name__)
+
+# Bare URLs in prose; trailing punctuation is stripped by the caller.
+_URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
 
 class SonarWebConfig(BaseModel):
@@ -58,7 +63,13 @@ _SYSTEM_PROMPT = (
     "Only answer using the search results provided. "
     "If the results do not contain the answer, say so explicitly rather than guessing. "
     "If the search results are related but do not match the question, "
-    "state the mismatch explicitly before answering."
+    "state the mismatch explicitly before answering.\n"
+    # Sonar returns its sources in a `citations` / `search_results` field, but
+    # gateways in front of it (OpenRouter) strip those, leaving prose with no
+    # links at all. Asking for the URLs inline is what actually survives.
+    "Format every finding as one line: the full source URL, then ' — ', then a "
+    "one-sentence summary in Greek. Output nothing else. Include the bare "
+    "https:// URL on every line; never cite by number or name alone."
 )
 
 
@@ -150,4 +161,30 @@ class SonarWebPlugin(SourcePlugin):
                 if url not in {e[0] for e in extracted}:
                     extracted.append((url, "", ""))
 
+        if not extracted:
+            # Gateways in front of Perplexity (OpenRouter, notably) drop both
+            # structured fields. The URLs are still in the answer text, so read
+            # them from there rather than reporting nothing found.
+            extracted.extend(self._urls_from_content(result))
+
         return extracted
+
+    def _urls_from_content(self, result: dict[str, Any]) -> list[tuple[str, str, str]]:
+        """Harvest ``(url, "", snippet)`` from the assistant message body."""
+        choices = result.get("choices") or []
+        if not choices:
+            return []
+        content = ((choices[0] or {}).get("message") or {}).get("content") or ""
+
+        out: list[tuple[str, str, str]] = []
+        seen: set[str] = set()
+        for line in content.splitlines():
+            for match in _URL_RE.finditer(line):
+                url = match.group(0).rstrip(".,;:)]}\"'")
+                if url in seen:
+                    continue
+                seen.add(url)
+                # Whatever else is on the line is the closest thing to a snippet.
+                snippet = _URL_RE.sub("", line).strip(" \t-*[]()–—•")
+                out.append((url, "", snippet))
+        return out

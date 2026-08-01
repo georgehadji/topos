@@ -56,8 +56,9 @@ class SocialPlugin(SourcePlugin):
     kind = "social"
     config_model = SocialConfig
 
-    def __init__(self) -> None:
-        self._provider: Any = None
+    def __init__(self, provider: Any = None) -> None:
+        # Injected by interfaces/ (see cli.main._build_plugin); tests set it directly.
+        self._provider: Any = provider
 
     async def fetch(self, config: BaseModel) -> AsyncIterator[PluginArtifact]:
         """Run X Search queries and yield discovered posts as artifacts."""

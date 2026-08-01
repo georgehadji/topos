@@ -23,6 +23,7 @@ dependencies = [
   "opentelemetry-sdk>=1.28",
   "opentelemetry-instrumentation-fastapi>=0.49b0",
   "strawberry-graphql>=0.323.2",
+  "pypdf>=5.1",  # PDF text-layer extraction — see docs/adr/ADR-012
 ]
 
 [dependency-groups]

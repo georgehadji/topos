@@ -31,5 +31,10 @@ def get(kind: str) -> type[SourcePlugin] | None:
 
 
 def list_kinds() -> list[str]:
-    """Return all registered plugin kinds."""
-    return list(_registry.keys())
+    """Return all registered plugin kinds, sorted.
+
+    Sorted rather than in registration order: the order plugins happen to be
+    imported in is not a contract, and callers (the CLI, error messages, tests)
+    want a stable list.
+    """
+    return sorted(_registry)

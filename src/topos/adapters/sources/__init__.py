@@ -17,6 +17,7 @@ from topos.adapters.sources import (
     news,
     social,
     sonar_web,
+    websearch,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "news",
     "social",
     "sonar_web",
+    "websearch",
 ]

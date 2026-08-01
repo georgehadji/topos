@@ -65,6 +65,22 @@ class Geocoder(Protocol):
     def __call__(self, toponym: str) -> GeocodeResult | None: ...
 
 
+class TextExtractor(Protocol):
+    """Artifact bytes -> text. Implemented by adapters.ocr (ADR-012).
+
+    Returns None when the bytes carry no readable text (a scanned PDF, say).
+    The caller must park the artifact, never substitute placeholder text.
+    """
+
+    def __call__(self, data: bytes, mime: str) -> str | None: ...
+
+
+class BlobReader(Protocol):
+    """The read half of BlobStore, for code that only fetches."""
+
+    async def get(self, key: str) -> bytes: ...
+
+
 class SourceArtifact(Protocol):
     """One raw artifact yielded by a source plugin.
 

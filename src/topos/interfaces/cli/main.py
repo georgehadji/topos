@@ -34,8 +34,12 @@ import typer
 import uvicorn
 
 from topos import __version__
+from topos.adapters.blob.s3 import S3BlobStore
+from topos.adapters.llm.sonar import SonarProvider
+from topos.adapters.llm.xai import XaiProvider
 from topos.adapters.sources import registry
-from topos.config import get_settings
+from topos.adapters.sources.websearch import available_engines
+from topos.config import get_settings, is_placeholder_key
 from topos.interfaces.cli.admin_cmd import cost, seed
 from topos.interfaces.cli.export_cmd import cli as export_cli
 from topos.interfaces.cli.io import emit, fail
@@ -94,8 +98,19 @@ def health(
     report = asyncio.run(_probe(db_dsn or settings.db_dsn))
     report["llm_provider"] = settings.llm_provider
     report["llm_key_present"] = bool(settings.llm_api_key or settings.xai_api_key)
+    # "mock" means claims are fabricated, not extracted. Surface it loudly.
+    report["llm_mode"] = "mock" if is_placeholder_key(settings.llm_api_key) else "live"
     report["s3_endpoint"] = settings.s3_endpoint
     report["sources_registered"] = len(registry.list_kinds())
+    # Which discovery paths can actually reach the outside world right now.
+    live = not is_placeholder_key(settings.llm_api_key)
+    report["search"] = {
+        "web_engines": available_engines(settings),  # brave, google_cse, bing, ...
+        "sonar": "perplexity_direct"
+        if not is_placeholder_key(settings.perplexity_api_key)
+        else ("openrouter" if live else False),
+        "xai_web_and_x_search": not is_placeholder_key(settings.xai_api_key),
+    }
 
     emit(report, as_json=json_out)
     if not report["db_ok"]:
@@ -157,13 +172,52 @@ def backfill(
     except ValueError as exc:
         fail(str(exc), json_out=json_out)
 
-    dsn = db_dsn or get_settings().db_dsn
+    settings = get_settings()
+    dsn = db_dsn or settings.db_dsn
+    plugin = _build_plugin(source, plugin_cls, settings)
+    blob = _build_blob(settings)
     try:
-        result = asyncio.run(_run_backfill(dsn, source, plugin_cls(), config, dry_run=dry_run))
+        result = asyncio.run(_run_backfill(dsn, source, plugin, config, blob=blob, dry_run=dry_run))
     except Exception as exc:
         fail(f"backfill failed: {type(exc).__name__}: {exc}", json_out=json_out)
 
     emit(result, as_json=json_out)
+
+
+def _build_plugin(kind: str, plugin_cls: Any, settings: Any) -> Any:
+    """Construct a source plugin, injecting whatever provider it needs.
+
+    The search-backed sources do not fetch anything without a provider — they
+    log and yield nothing. interfaces/ is the only layer allowed to pick a
+    concrete adapter, so the wiring lives here rather than in the plugin.
+    """
+    if kind == "social":
+        # X Search runs through the xAI Responses API, which is the only
+        # endpoint exposing the x_search tool.
+        return plugin_cls(
+            XaiProvider(
+                api_key=settings.xai_api_key,
+                base_url=settings.xai_base_url,
+                fallback_api_key=settings.llm_api_key,
+                fallback_base_url=settings.llm_base_url,
+                fallback_model=settings.llm_fallback_model or "x-ai/grok-4.5",
+            )
+        )
+    if kind == "sonar_web":
+        # Sonar searches the web before every completion. Perplexity direct
+        # first, OpenRouter second.
+        return plugin_cls(
+            SonarProvider(
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                perplexity_api_key=settings.perplexity_api_key,
+                perplexity_base_url=settings.perplexity_base_url,
+                perplexity_model=settings.perplexity_model,
+            )
+        )
+    if kind == "websearch":
+        return plugin_cls(settings)
+    return plugin_cls()
 
 
 def _build_config(model: Any, *, limit: int, org: str, overrides: list[str]) -> Any:
@@ -198,14 +252,24 @@ def _build_config(model: Any, *, limit: int, org: str, overrides: list[str]) -> 
         raise ValueError(f"invalid config: {exc}") from exc
 
 
+def _build_blob(settings: Any) -> S3BlobStore:
+    """The object store that holds fetched artifact bytes."""
+    return S3BlobStore(
+        endpoint_url=settings.s3_endpoint,
+        bucket=settings.s3_bucket,
+        access_key_id=settings.s3_access_key,
+        secret_access_key=settings.s3_secret_key,
+    )
+
+
 async def _run_backfill(
-    dsn: str, source: str, plugin: Any, config: Any, *, dry_run: bool
+    dsn: str, source: str, plugin: Any, config: Any, *, blob: Any, dry_run: bool
 ) -> dict[str, Any]:
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
     if pool is None:  # pragma: no cover - asyncpg returns None only on bad config
         raise RuntimeError("could not create a connection pool")
     try:
-        return await backfill_source(pool, source, plugin, config, dry_run=dry_run)
+        return await backfill_source(pool, source, plugin, config, blob=blob, dry_run=dry_run)
     finally:
         await pool.close()
 

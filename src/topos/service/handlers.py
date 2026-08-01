@@ -1,4 +1,4 @@
-# ruff: noqa: RUF001, E501
+# ruff: noqa: E501
 """Pipeline handlers: concrete implementations for each FSM state.
 
 Slices 1.5 - 1.9. Decoupled and modular handlers that process artifacts,
@@ -19,18 +19,34 @@ import asyncpg
 from topos.domain.types import PipelineRow, PipelineState
 from topos.service.extraction import extract_artifact
 from topos.service.mentions import persist_extraction
-from topos.service.ports import Geocoder
+from topos.service.ports import BlobReader, Geocoder, TextExtractor
 
 logger = logging.getLogger(__name__)
+
+# document.text_method, by what the bytes turned out to be.
+_TEXT_METHOD = {
+    "application/pdf": "pdf_text",
+    "text/html": "html",
+    "application/json": "json",
+}
 
 
 class PipelineHandlers:
     """Production pipeline handlers linked to each FSM state."""
 
-    def __init__(self, pool: asyncpg.Pool, llm_client: Any, geocoder: Geocoder) -> None:
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        llm_client: Any,
+        geocoder: Geocoder,
+        blob: BlobReader,
+        extract_text: TextExtractor,
+    ) -> None:
         self.pool = pool
         self.llm_client = llm_client
         self.geocoder = geocoder
+        self.blob = blob
+        self.extract_text = extract_text
 
     async def handle_fetched(self, row: PipelineRow) -> None:
         """FETCHED -> TEXTIFIED.
@@ -48,41 +64,39 @@ class PipelineHandlers:
 
             # Read artifact details
             artifact = await conn.fetchrow(
-                "SELECT uri, mime FROM artifact WHERE id = $1::uuid",
+                "SELECT uri, mime, blob_key FROM artifact WHERE id = $1::uuid",
                 row.artifact_id,
             )
             if not artifact:
                 return
 
-            # Real systems would fetch from BlobStore; here we use high-quality simulated Greek text
-            # representing ΦΕΚ, ΔΕΔΔΗΕ, news feeds, or Διαύγεια based on the URI/mime.
-            uri = artifact["uri"].lower()
-            text = "Γενικό περιεχόμενο εγγράφου."
+            blob_key = artifact["blob_key"]
+            if not blob_key:
+                raise ValueError(f"artifact {row.artifact_id} has no blob_key; nothing to textify")
 
-            if "fek" in uri or "φεκ" in uri:
-                text = (
-                    "Εφημερίδα της Κυβερνήσεως: Έγκριση κονδυλίων για την ασφαλτόστρωση "
-                    "και αποκατάσταση των εκτεταμένων φθορών στην οδό Παπαναστασίου στη Θεσσαλονίκη."
+            # The bytes we actually fetched — never a stand-in for them (ADR-012).
+            data = await self.blob.get(blob_key)
+            mime = artifact["mime"] or ""
+            text = self.extract_text(data, mime)
+
+            if not text:
+                # A scan, an empty body, or an unreadable format. Park it for the
+                # OCR slice rather than inventing content.
+                raise ValueError(
+                    f"no_text_layer: cannot extract text from {artifact['uri']} ({mime})"
                 )
-            elif "deddhe" in uri or "δεδδηε" in uri:
-                text = (
-                    "ΔΕΔΔΗΕ Ανακοίνωση: Προγραμματισμένη διακοπή ρεύματος λόγω εργασιών "
-                    "συντήρησης δικτύου στην περιοχή της Άνω Τούμπας σήμερα από τις 08:00 έως τις 14:00."
-                )
-            elif "diavgeia" in uri:
-                text = (
-                    "Απόφαση Δήμου Θεσσαλονίκης: Έκτακτες εργασίες για την επισκευή σοβαρής βλάβης "
-                    f"στον κεντρικό αγωγό ύδρευσης επί της οδού Εγνατία {str(row.artifact_id)[:4]}."
-                )
+
+            method = _TEXT_METHOD.get(mime.split(";", 1)[0].strip().lower(), "native")
 
             await conn.execute(
                 """
                 INSERT INTO document (artifact_id, lang, text, text_method)
-                VALUES ($1::uuid, 'el', $2, 'native')
+                VALUES ($1::uuid, 'el', $2, $3)
                 ON CONFLICT (artifact_id) DO NOTHING
                 """,
                 row.artifact_id,
                 text,
+                method,
             )
 
     async def handle_textified(self, row: PipelineRow) -> None:

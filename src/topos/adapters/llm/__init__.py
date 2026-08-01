@@ -21,7 +21,7 @@ from topos.adapters.llm.fallback import FallbackProvider
 from topos.adapters.llm.provider import OpenRouterProvider
 from topos.adapters.llm.retry import Retry
 from topos.adapters.llm.telemetry import Telemetry
-from topos.config import Settings
+from topos.config import Settings, is_placeholder_key
 
 
 class StructuredLlmWrapper:
@@ -62,6 +62,22 @@ class StructuredLlmWrapper:
         return raw_result
 
 
+def _is_grok(model: str) -> bool:
+    return "grok" in model.lower()
+
+
+def _xai_name(model: str) -> str:
+    """xAI's own API names Grok without a vendor prefix: ``grok-4.5``."""
+    return model.split("/", 1)[-1] if _is_grok(model) else model
+
+
+def _openrouter_name(model: str) -> str:
+    """OpenRouter namespaces Grok under ``x-ai/``."""
+    if _is_grok(model) and "/" not in model:
+        return f"x-ai/{model}"
+    return model
+
+
 def build_llm_client(
     settings: Settings | None = None,
     pool: asyncpg.Pool | None = None,
@@ -77,7 +93,15 @@ def build_llm_client(
     """
     s = settings or Settings()
 
-    if s.llm_provider == "xai":
+    # Grok goes to xAI directly, with OpenRouter as the fallback. Keyed off the
+    # model rather than llm_provider so that selecting a Grok model is enough —
+    # but only when a real xAI key exists, otherwise the primary leg would fail
+    # on every call before falling back.
+    prefer_xai = (_is_grok(s.llm_model) or s.llm_provider == "xai") and not is_placeholder_key(
+        s.xai_api_key
+    )
+
+    if prefer_xai:
         primary = OpenRouterProvider(
             api_key=s.xai_api_key,
             base_url=s.xai_base_url,
@@ -86,12 +110,11 @@ def build_llm_client(
             api_key=s.llm_api_key,
             base_url=s.llm_base_url,
         )
-        fallback_model = s.llm_fallback_model or s.llm_model
         provider: Any = FallbackProvider(
             primary=primary,
             fallback=fallback,
-            primary_model=s.llm_model,
-            fallback_model=fallback_model,
+            primary_model=_xai_name(s.llm_model),
+            fallback_model=s.llm_fallback_model or _openrouter_name(s.llm_model),
         )
     else:
         provider = OpenRouterProvider(
