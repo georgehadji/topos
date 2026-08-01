@@ -11,6 +11,7 @@ Posts with images/video are noted in metadata but image analysis is deferred
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -20,6 +21,27 @@ from topos.adapters.sources.base import PluginArtifact, SourcePlugin
 from topos.adapters.sources.registry import register
 
 logger = logging.getLogger(__name__)
+
+# Guard against pathological nesting when walking a response.
+_MAX_DEPTH = 12
+
+# Post permalinks on either domain. Trailing punctuation is stripped by callers.
+_POST_URL_RE = re.compile(r"https?://(?:x|twitter)\.com/\S+")
+
+
+def _harvest_strings(node: object, out: list[str], depth: int = 0) -> None:
+    """Collect every string in a nested response, deepest-first."""
+    if depth > _MAX_DEPTH:
+        return
+    if isinstance(node, str):
+        if node.strip():
+            out.append(node)
+    elif isinstance(node, dict):
+        for value in node.values():
+            _harvest_strings(value, out, depth + 1)
+    elif isinstance(node, list):
+        for value in node:
+            _harvest_strings(value, out, depth + 1)
 
 
 class SocialConfig(BaseModel):
@@ -148,4 +170,29 @@ class SocialPlugin(SourcePlugin):
                 if isinstance(response_text, str) and response_text.strip():
                     posts.append({"text": response_text, "url": item.get("name", "")})
 
+        if not posts:
+            # xAI keeps changing the item taxonomy — the live API returns
+            # `custom_tool_call` and `reasoning`, neither of which the branches
+            # above match, so nothing was ever extracted. Rather than chase the
+            # schema, harvest post links from the whole payload.
+            posts = self._posts_from_links(result)
+
+        return posts
+
+    def _posts_from_links(self, result: dict[str, Any]) -> list[dict[str, Any]]:
+        """Find X post URLs anywhere in the response, with their nearest text."""
+        strings: list[str] = []
+        _harvest_strings(result, strings)
+
+        posts: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for blob in strings:
+            for line in blob.splitlines():
+                for match in _POST_URL_RE.finditer(line):
+                    url = match.group(0).rstrip(".,;:)]}\"'")
+                    if url in seen:
+                        continue
+                    seen.add(url)
+                    text = _POST_URL_RE.sub("", line).strip(" \t-*[]()")
+                    posts.append({"url": url, "text": text or url})
         return posts

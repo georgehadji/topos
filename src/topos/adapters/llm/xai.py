@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 # Failure modes that trigger fallback.
 _FALLBACK_STATUSES = frozenset({401, 403, 429, 500, 502, 503, 504})
 
+# The Responses API runs a live search (x_search / web_search) and then reasons
+# over the results, so it is far slower than a plain completion. At 30s every
+# x_search call timed out and silently degraded to the search-less fallback.
+_TIMEOUT = httpx.Timeout(180.0, connect=10.0)
+
 
 class XaiProvider:
     """xAI Responses API provider with xAI-first → OpenRouter fallback.
@@ -117,7 +122,7 @@ class XaiProvider:
                 }
             )
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(
                 f"{self._base_url}/responses",
                 headers={
@@ -150,7 +155,7 @@ class XaiProvider:
             "max_tokens": 4096,
         }
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(
                 f"{self._fallback_base_url}/chat/completions",
                 headers={

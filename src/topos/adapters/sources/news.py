@@ -17,8 +17,10 @@ from topos.adapters.sources.registry import register
 
 class NewsConfig(BaseModel):
     feeds: list[str] = [
-        "https://www.thestival.gr/feed",
-        "https://www.typosthes.gr/rss",
+        # Verified live 2026-08-01. The trailing slash matters: /feed 301s, and
+        # the client did not follow redirects, so this fetched nothing at all.
+        "https://www.thestival.gr/feed/",
+        "https://parallaximag.gr/feed",
     ]
     max_per_feed: int = 5
 
@@ -41,7 +43,7 @@ class NewsPlugin(SourcePlugin):
 
         for feed_url in cfg.feeds:
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
                     resp = await client.get(
                         feed_url,
                         headers={"User-Agent": "Topos/0.1"},
@@ -54,9 +56,12 @@ class NewsPlugin(SourcePlugin):
             links = re.findall(r"<link>(https?://[^<]+)</link>", body)
             titles = re.findall(r"<title>([^<]+)</title>", body)
 
-            for url, title in zip(links, titles, strict=False):
+            # max_per_feed was parsed and never used: every item in the feed got
+            # fetched sequentially at a 30s timeout, so a 50-entry feed could
+            # block for many minutes. Bound the work before doing any of it.
+            for url, title in list(zip(links, titles, strict=False))[: cfg.max_per_feed]:
                 try:
-                    async with httpx.AsyncClient(timeout=30) as c2:
+                    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c2:
                         art = await c2.get(
                             url,
                             headers={"User-Agent": "Topos/0.1"},
