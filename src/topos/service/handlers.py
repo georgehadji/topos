@@ -31,6 +31,40 @@ _TEXT_METHOD = {
 }
 
 
+# Keys that usually hold a place, tried before anything else in the claim.
+_PLACE_KEYS = (
+    "location",
+    "street",
+    "address",
+    "neighbourhood",
+    "area",
+    "affected_areas",
+    "municipality",
+    "region",
+)
+
+
+def _toponym_candidates(value: Any) -> list[str]:
+    """Strings from a claim value worth trying against the geocoder.
+
+    Place-like keys first, then every other string (the geocoder scans free
+    text, so a description can still yield a hit).
+    """
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if not isinstance(value, dict):
+        return []
+
+    preferred: list[str] = []
+    rest: list[str] = []
+    for key, raw in value.items():
+        for item in raw if isinstance(raw, list) else [raw]:
+            if not isinstance(item, str) or not item.strip():
+                continue
+            (preferred if key in _PLACE_KEYS else rest).append(item)
+    return preferred + rest
+
+
 class PipelineHandlers:
     """Production pipeline handlers linked to each FSM state."""
 
@@ -191,20 +225,15 @@ class PipelineHandlers:
                     with contextlib.suppress(Exception):
                         val = json.loads(val)
 
-                toponym = ""
-
-                # Parse possible toponyms from claim values
-                if isinstance(val, str):
-                    toponym = val
-                elif isinstance(val, dict):
-                    loc = val.get("location") or val.get("street") or val.get("address") or ""
-                    toponym = str(loc)
-
-                if not toponym:
-                    toponym = claim["predicate"]
-
-                # Run geocoding lookup
-                geo_res = self.geocoder(toponym)
+                # Try every string in the claim, place-like keys first. Models
+                # put the location wherever they like — affected_areas,
+                # neighbourhood, or buried in description — so whitelisting
+                # three key names geocoded almost nothing.
+                geo_res = None
+                for candidate in _toponym_candidates(val):
+                    geo_res = self.geocoder(candidate)
+                    if geo_res:
+                        break
                 if geo_res:
                     # Update problem coordinate
                     # Find problem linked to this claim

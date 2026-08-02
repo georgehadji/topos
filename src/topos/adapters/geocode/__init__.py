@@ -182,10 +182,58 @@ _ALIASES: dict[str, str] = {
     "θέρμης": "θέρμη",
     "ωραιοκάστρου": "ωραιόκαστρο",
     "λαγκαδά": "λαγκαδάς",
+    # Latin transliterations (ARCHITECTURE.md §Greek). Extraction frequently
+    # returns these — "Thessaloniki Metro", "Kalamaria" — and a Greek-only
+    # table matches none of them.
+    "thessaloniki": "θεσσαλονίκη",
+    "thessalonikis": "θεσσαλονίκη",
+    "salonica": "θεσσαλονίκη",
+    "kalamaria": "καλαμαριά",
+    "toumba": "τούμπα",
+    "ano toumba": "άνω τούμπα",
+    "charilaou": "χαριλάου",
+    "harilaou": "χαριλάου",
+    "tsimiski": "τσιμισκή",
+    "egnatia": "εγνατία",
+    "aristotelous": "πλατεία αριστοτέλους",
+    "navarinou": "πλατεία ναβαρίνου",
+    "nikis": "λεωφόρος νίκης",
+    "ampelokipoi": "αμπελόκηποι",
+    "efkarpia": "ευκαρπία",
+    "polichni": "πολίχνη",
+    "stavroupoli": "σταυρούπολη",
+    "sykies": "συκιές",
+    "neapoli": "νεάπολη",
+    "pylaia": "πυλαία",
+    "chortiatis": "χορτιάτης",
+    "panorama": "πανόραμα",
+    "thermi": "θέρμη",
+    "oraiokastro": "ωραιόκαστρο",
+    "lagkadas": "λαγκαδάς",
 }
 
 
 _CONFIDENCE_THRESHOLD = 0.70
+
+_ACCENT_MAP = str.maketrans("άέήίόύώ", "αεηιουω")
+
+
+def _fold(text: str) -> str:
+    return text.strip().lower().translate(_ACCENT_MAP)
+
+
+# Every name worth looking for inside free text — gazetteer entries plus their
+# aliases — folded, and mapped back to its canonical gazetteer key.
+_SCANNABLE: dict[str, str] = {
+    _fold(name): _ALIASES.get(name, name) for name in (set(_GAZETTEER) | set(_ALIASES))
+}
+
+# One alternation, longest-first so the most specific name wins ("άνω τούμπα"
+# over "τούμπα"). Word-bounded, so short Latin aliases cannot match inside an
+# unrelated word.
+_SCAN_RE = re.compile(
+    r"\b(" + "|".join(re.escape(n) for n in sorted(_SCANNABLE, key=len, reverse=True)) + r")\b"
+)
 
 
 def geocode(toponym: str) -> GeocodeResult | None:
@@ -248,10 +296,43 @@ def geocode(toponym: str) -> GeocodeResult | None:
                     label=result.label,
                 )
 
+    # Step 3b: the toponym is often buried in a sentence rather than being the
+    # whole string — "εκτεταμένη βλάβη στην Εγνατία". Every step above matches
+    # the string as a whole, so those claims never geocoded at all.
+    scanned = _scan_text(toponym)
+    if scanned:
+        return scanned
+
     # TODO step 4: trigram via Postgres (needs DB adapter)
     # TODO step 5: Nominatim / LLM fallback (needs http client)
 
     return None
+
+
+def _scan_text(text: str) -> GeocodeResult | None:
+    """Find the most specific known place name occurring inside *text*.
+
+    Longest match wins, so "άνω τούμπα" is preferred over "τούμπα".
+    """
+    folded = _fold(text)
+    if not folded:
+        return None
+
+    match = _SCAN_RE.search(folded)
+    if match is None:
+        return None
+
+    result = _exact_lookup(_SCANNABLE[match.group(1)])
+    if result is None:
+        return None
+    return GeocodeResult(
+        geom=result.geom,
+        # Found by scanning free text rather than a clean toponym field, so it
+        # is weaker evidence than an exact match.
+        confidence=result.confidence * 0.75,
+        granularity=result.granularity,
+        label=result.label,
+    )
 
 
 def _exact_lookup(name: str) -> GeocodeResult | None:

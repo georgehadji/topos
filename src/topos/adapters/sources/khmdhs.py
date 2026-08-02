@@ -8,6 +8,7 @@ No auth key required for basic search.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
@@ -17,6 +18,8 @@ from pydantic import BaseModel
 from topos.adapters.sources.base import PluginArtifact, SourcePlugin
 from topos.adapters.sources.registry import register
 
+logger = logging.getLogger(__name__)
+
 
 class KhmidhsConfig(BaseModel):
     """Config stored in source.config jsonb."""
@@ -24,7 +27,9 @@ class KhmidhsConfig(BaseModel):
     base_url: str = "https://www.eprocurement.gov.gr"
     page_size: int = 20
     org: str = ""
-    max_pages: int = 0
+    max_pages: int = 5
+    """Hard cap. 0 means unlimited, which paired with a `while True` loop meant
+    a slow or misbehaving endpoint could page forever."""
 
 
 @register
@@ -57,7 +62,17 @@ class KhmidhsPlugin(SourcePlugin):
                     )
                     resp.raise_for_status()
                     data = resp.json()
-                except httpx.HTTPStatusError:
+                except (httpx.HTTPError, ValueError) as exc:
+                    # Only HTTPStatusError was caught before. The endpoint now
+                    # answers 200 with an HTML meta-refresh to the ΚΗΜΔΗΣ
+                    # portal, so .json() raises ValueError — which escaped, and
+                    # a timeout escaped too, both on an unbounded page loop.
+                    logger.warning(
+                        "khmdhs fetch stopped at page %d: %s: %s",
+                        page,
+                        type(exc).__name__,
+                        str(exc)[:120],
+                    )
                     break
 
                 if isinstance(data, list):

@@ -109,3 +109,37 @@ def test_geocoding_with_numbers_and_suffixes() -> None:
     res3 = geocode("Τσιμισκή 12")
     assert res3 is not None
     assert res3.granularity == GeoGranularity.STREET
+
+
+def test_toponym_buried_in_a_sentence_is_found() -> None:
+    """Models put the place inside prose, not in a clean toponym field.
+
+    Every lookup step before this matched the string as a whole, so those
+    claims never geocoded at all.
+    """
+    res = geocode("fire at a recycling plant in Ωραιόκαστρο")
+
+    assert res is not None
+    assert res.label == "Ωραιόκαστρο"
+    # Weaker evidence than an exact match, and it must say so.
+    assert res.confidence < _GAZETTEER["ωραιόκαστρο"].confidence
+
+
+def test_scan_prefers_the_most_specific_place() -> None:
+    res = geocode("πλημμύρα στην Άνω Τούμπα σήμερα")
+
+    assert res is not None
+    assert res.label == "Άνω Τούμπα"
+
+
+def test_scan_handles_genitive_inside_text() -> None:
+    res = geocode("No buses operating in Θεσσαλονίκης today")
+
+    assert res is not None
+    assert res.label == "Θεσσαλονίκη"
+
+
+def test_predicate_is_not_a_place() -> None:
+    """handle_extracted used to fall back to the predicate; it must not match."""
+    assert geocode("road_damage") is None
+    assert geocode("public_transport_disruption") is None
