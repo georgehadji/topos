@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 
+from topos.adapters.geocode.seed import genitive_variants, load_seed
 from topos.domain.geo import GeocodeResult, GeoPoint
 from topos.domain.types import GeoGranularity
 
@@ -215,6 +216,11 @@ _ALIASES: dict[str, str] = {
 
 _CONFIDENCE_THRESHOLD = 0.70
 
+# Generated OSM seed underneath the curated table. Curated entries win: they are
+# hand-checked and carry higher confidence. Refresh with
+# `topos-cli gazetteer refresh`.
+_GAZETTEER = {**load_seed(), **_GAZETTEER}
+
 _ACCENT_MAP = str.maketrans("άέήίόύώ", "αεηιουω")
 
 
@@ -227,6 +233,12 @@ def _fold(text: str) -> str:
 _SCANNABLE: dict[str, str] = {
     _fold(name): _ALIASES.get(name, name) for name in (set(_GAZETTEER) | set(_ALIASES))
 }
+
+# Greek names appear in the genitive far more often than the nominative. Index
+# the generated forms too, without letting them shadow a real name.
+for _canonical in list(_SCANNABLE.values()):
+    for _variant in genitive_variants(_fold(_canonical)):
+        _SCANNABLE.setdefault(_variant, _canonical)
 
 # One alternation, longest-first so the most specific name wins ("άνω τούμπα"
 # over "τούμπα"). Word-bounded, so short Latin aliases cannot match inside an

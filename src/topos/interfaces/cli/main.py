@@ -42,6 +42,7 @@ from topos.adapters.sources.websearch import available_engines
 from topos.config import get_settings, is_placeholder_key
 from topos.interfaces.cli.admin_cmd import cost, seed
 from topos.interfaces.cli.export_cmd import cli as export_cli
+from topos.interfaces.cli.gazetteer_cmd import cli as gazetteer_cli
 from topos.interfaces.cli.io import emit, fail
 from topos.interfaces.cli.worker import main as worker_main
 from topos.service.backfill import backfill_source
@@ -53,6 +54,7 @@ cli = typer.Typer(
     add_completion=False,
 )
 cli.add_typer(export_cli, name="export")
+cli.add_typer(gazetteer_cli, name="gazetteer")
 cli.command("seed")(seed)
 cli.command("cost")(cost)
 

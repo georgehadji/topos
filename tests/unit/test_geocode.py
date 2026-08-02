@@ -143,3 +143,35 @@ def test_predicate_is_not_a_place() -> None:
     """handle_extracted used to fall back to the predicate; it must not match."""
     assert geocode("road_damage") is None
     assert geocode("public_transport_disruption") is None
+
+
+def test_seeded_place_outside_the_curated_table_resolves() -> None:
+    """The curated table has 24 entries; real claims name hundreds of places."""
+    res = geocode("Πεύκα")
+
+    assert res is not None
+    assert res.label == "Πεύκα"
+
+
+def test_genitive_of_a_seeded_place_resolves() -> None:
+    """Greek claims name places in the genitive far more often than nominative."""
+    res = geocode("προβλήματα στην κοινότητα Πεύκων")
+
+    assert res is not None
+    assert res.label == "Πεύκα"
+
+
+def test_latin_name_from_osm_resolves() -> None:
+    """Extraction returns Latin forms; OSM's name:en covers them."""
+    res = geocode("Scheduled power outage in areas of Kalochori")
+
+    assert res is not None
+    assert res.label == "Καλοχώρι"
+
+
+def test_curated_entry_outranks_the_seed() -> None:
+    """Hand-checked entries must not be shadowed by generated ones."""
+    res = geocode("Θεσσαλονίκη")
+
+    assert res is not None
+    assert res.confidence == _GAZETTEER["θεσσαλονίκη"].confidence == 0.99
