@@ -17,6 +17,7 @@ import asyncpg
 import pytest
 
 from topos.adapters.db.pipeline_repo import PipelineRepo
+from topos.config import get_settings
 from topos.domain.pipeline_fsm import StepOutcome, next_state
 from topos.domain.types import ArtifactId, PipelineState
 
@@ -57,14 +58,17 @@ def _find_pg_host() -> str:
 def _dsn() -> str:
     """Where the contract-test PostgreSQL lives.
 
-    An explicit DSN wins and skips discovery entirely — it is the only way to
-    reach a Postgres on a non-default port (e.g. when 5432 on the host is
-    already taken by another instance). Same env-first shape as test_blob.py.
+    ``TOPOS_TEST_PG_DSN`` wins outright when set (e.g. CI, or a host running
+    Postgres on yet another port). Otherwise fall back to ``TOPOS_DB_DSN`` via
+    ``get_settings()`` — the same value the app itself connects with, read
+    from `.env` — rather than a second hardcoded port literal that can drift
+    from it. WSL discovery only overrides the *host* of that DSN, not its
+    port, so it still applies when the compose stack is reachable there.
     """
     explicit = os.environ.get("TOPOS_TEST_PG_DSN")
     if explicit:
         return explicit
-    return f"postgresql://topos:devonly@{_find_pg_host()}:5432/topos"
+    return get_settings().db_dsn.replace("localhost", _find_pg_host())
 
 
 DSN = _dsn()

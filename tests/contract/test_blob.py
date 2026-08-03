@@ -6,19 +6,21 @@ Mark: pytest -m contract
 from __future__ import annotations
 
 import hashlib
-import os
 
 import pytest
 
 from topos.adapters.blob.s3 import S3BlobStore
+from topos.config import get_settings
 
 pytestmark = pytest.mark.contract
 
-# Resolve local MinIO endpoint
-ENDPOINT = os.environ.get("TOPOS_S3_ENDPOINT") or "http://127.0.0.1:9000"
-BUCKET = os.environ.get("TOPOS_S3_BUCKET") or "topos-artifacts"
-ACCESS_KEY = os.environ.get("S3_ACCESS_KEY") or "topos"
-SECRET_KEY = os.environ.get("S3_SECRET_KEY") or "devonlydevonly"
+# Same values the app connects with (from `.env` via get_settings()) rather
+# than a second set of hardcoded defaults that can drift from it.
+_settings = get_settings()
+ENDPOINT = _settings.s3_endpoint
+BUCKET = _settings.s3_bucket
+ACCESS_KEY = _settings.s3_access_key
+SECRET_KEY = _settings.s3_secret_key
 
 
 @pytest.fixture

@@ -5,6 +5,7 @@ Usage::
     uv run topos-cli export problems --output problems.jsonl
     uv run topos-cli export claims --output claims.jsonl
     uv run topos-cli export all --output-dir ./exports
+    uv run topos-cli export newsletter --output digest.md
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import asyncpg
@@ -20,6 +22,7 @@ import typer
 
 from topos.config import get_settings
 from topos.interfaces.cli.io import emit
+from topos.service.newsletter import build_newsletter
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +105,31 @@ def all(
     )
 
 
+@cli.command()
+def newsletter(
+    output: str = "newsletter.md",
+    days: int = typer.Option(0, help="Only findings first seen in the last N days. 0 = all."),
+    db_dsn: str | None = None,
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Render every finding as a dated Markdown digest."""
+    since = datetime.now(UTC) - timedelta(days=days) if days > 0 else None
+    dsn = db_dsn or get_settings().db_dsn
+
+    async def _build() -> str:
+        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
+        try:
+            return await build_newsletter(pool, since=since)
+        finally:
+            await pool.close()
+
+    markdown = asyncio.run(_build())
+    with open(output, "w", encoding="utf-8") as f:
+        f.write(markdown)
+    logger.info("Wrote newsletter to %s", output)
+    emit({"exported": "newsletter", "output": output, "bytes": len(markdown)}, as_json=json_out)
+
+
 # ── Queries (PII-safe: exclude fields that could contain natural-person data) ─
 
 _PROBLEMS_QUERY = """
@@ -110,8 +138,8 @@ SELECT
   title,
   category,
   status,
-  ST_X(geom) AS lat,
-  ST_Y(geom) AS lon,
+  ST_Y(geom) AS lat,
+  ST_X(geom) AS lon,
   first_seen::text,
   last_seen::text,
   version
