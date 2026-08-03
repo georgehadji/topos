@@ -1,15 +1,19 @@
-"""ER clustering service: merges duplicate mentions into resolved problems.
+"""ER clustering service: finds and scores duplicate mention pairs.
 
 Slice 2.3. Connects the pure domain feature functions (2.2) to the
-persistence layer. Generates candidate pairs, scores them, makes
-decisions, and writes er_decision rows.
+persistence layer. Generates candidate pairs, scores them, makes decisions,
+writes er_decision rows, and delegates matches to service/er_merge.py
+(split out purely for the 400-line file cap — see that module's docstring).
 
-Merges are reversible via er_decision.reverted_by.
+Merges are reversible via er_decision.reverted_by (ARCHITECTURE.md >
+Immutability rules): a match sets the loser's status to 'merged' and moves
+its problem_claim rows onto the winner; revert_merge undoes exactly that.
 """
 
 from __future__ import annotations
 
-import uuid  # noqa: F401
+import json
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,25 +26,38 @@ from topos.domain.er import (
     er_decision,
     same_block,
 )
+from topos.service.er_merge import merge as _merge
+from topos.service.er_merge import revert_merge
+
+__all__ = ["revert_merge", "run_er"]
+
+# same_block() returns True whenever two problems share a category, so this
+# is O(n^2) over every candidate pair on each run.
+# ponytail: fine at the current n (single digits to low hundreds). A
+# geo/time-bucketed blocking key is the upgrade path once a source backfill
+# pushes candidate counts into the thousands.
+_DEFAULT_MAX_PAIRS = 10000
 
 
 async def run_er(
     pool: asyncpg.Pool,
     *,
     match_threshold: float = 0.55,
-    max_pairs: int = 10000,
+    max_pairs: int = _DEFAULT_MAX_PAIRS,
     actor: str = "system",
 ) -> dict[str, Any]:
     """Run entity resolution on all candidate mention pairs.
 
     Steps:
-    1. Fetch all mention (problem) rows with their latest claim text + location
+    1. Fetch all mention (problem) rows with their evidence text + location
     2. Generate candidate pairs using same_block()
     3. Compute feature vectors and make decisions
     4. Write er_decision rows for match + uncertain pairs
-    5. For matches, merge mentions into the first problem_id of the pair
+    5. For matches, merge the later-seen problem into the earlier one
 
-    Returns a summary dict with counts.
+    Returns a summary dict with counts. Idempotent: a merged problem's status
+    is no longer 'candidate', so it drops out of the next run's input set —
+    re-running after a merge does not re-merge or double-count it.
     """
     mentions = await _fetch_mentions(pool)
     if len(mentions) < 2:  # noqa: PLR2004
@@ -82,8 +99,7 @@ async def run_er(
                 if verdict == "non-match":
                     continue
 
-                # Write er_decision row
-                await _write_decision(
+                decision_id = await _write_decision(
                     conn,
                     a["id"],
                     b["id"],
@@ -96,6 +112,14 @@ async def run_er(
 
                 if verdict == "match":
                     matches += 1
+                    winner, loser = _older_first(a, b)
+                    await _merge(
+                        conn,
+                        winner_id=uuid.UUID(winner["id"]),
+                        loser_id=uuid.UUID(loser["id"]),
+                        decision_id=decision_id,
+                        actor=actor,
+                    )
                 else:
                     uncertain += 1
 
@@ -106,19 +130,42 @@ async def run_er(
     }
 
 
+def _older_first(a: dict[str, Any], b: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Deterministic winner selection: earlier first_seen survives.
+
+    Not row order (that depends on the SQL fetch, which is not guaranteed
+    stable) — first_seen is a real fact about the data.
+    """
+    return (a, b) if a["first_seen"] <= b["first_seen"] else (b, a)
+
+
 async def _fetch_mentions(pool: asyncpg.Pool) -> list[dict[str, Any]]:
-    """Fetch all mention (problem) rows with their text and location."""
+    """Fetch all candidate problem rows with evidence text and location.
+
+    Evidence text is every linked claim's value, not problem.title — the
+    title is derived from the predicate for any dict-valued claim
+    (mentions.py:_mention_title), so same-category problems end up with
+    identical titles and token overlap would compare nothing.
+
+    ST_X is longitude, ST_Y is latitude for a geometry(Point, 4326) — the
+    previous version of this query had the aliases swapped, so every
+    downstream distance calculation used lat/lon transposed.
+    """
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
             SELECT
               p.id::text,
               p.category,
-              p.title AS text,
-              ST_X(p.geom) AS lat,
-              ST_Y(p.geom) AS lon
+              p.first_seen,
+              COALESCE(string_agg(c.value::text, ' '), p.title) AS text,
+              ST_Y(p.geom) AS lat,
+              ST_X(p.geom) AS lon
             FROM problem p
+            LEFT JOIN problem_claim pc ON pc.problem_id = p.id
+            LEFT JOIN claim c ON c.id = pc.claim_id
             WHERE p.status = 'candidate'
+            GROUP BY p.id, p.category, p.first_seen, p.title, p.geom
             """
         )
     return [dict(r) for r in rows]
@@ -146,46 +193,19 @@ async def _write_decision(
         id_b,
         verdict,
         round(score, 4),
-        {
-            "same_predicate": fv.same_predicate,
-            "text_similarity": fv.text_similarity,
-            "geo_proximity": fv.geo_proximity,
-            "combined": fv.combined,
-        },
+        # No jsonb codec is registered on this pool (see claim.value handling
+        # in handlers.py) -- asyncpg needs a str for a ::jsonb param, not a
+        # dict. This was unreachable before run_er had a caller, so it was
+        # never exercised against a real connection.
+        json.dumps(
+            {
+                "same_predicate": fv.same_predicate,
+                "text_similarity": fv.text_similarity,
+                "geo_proximity": fv.geo_proximity,
+                "combined": fv.combined,
+            }
+        ),
         actor,
         now,
     )
     return result  # type: ignore[no-any-return]
-
-
-async def revert_merge(
-    pool: asyncpg.Pool,
-    decision_id: int,
-    *,
-    actor: str = "system",
-) -> None:
-    """Revert an ER merge by setting reverted_by on the original decision.
-
-    This does not un-merge the problem rows — it records the reversal
-    so the review queue can re-process. Full un-merge requires a review
-    task (slice 2.3 review queue).
-    """
-    async with pool.acquire() as conn:
-        decision = await conn.fetchrow(
-            "SELECT id FROM er_decision WHERE id = $1 AND reverted_by IS NULL",
-            decision_id,
-        )
-        if decision is None:
-            return
-
-        # Write the reversion as a new decision with reverted_by
-        await conn.execute(
-            """
-            INSERT INTO er_decision
-              (a_id, b_id, verdict, score, features, actor, reverted_by, at)
-            SELECT a_id, b_id, 'reverted', score, features, $2, $1, now()
-            FROM er_decision WHERE id = $1
-            """,
-            decision_id,
-            actor,
-        )

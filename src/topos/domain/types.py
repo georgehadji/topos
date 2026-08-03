@@ -33,6 +33,19 @@ class PipelineState(StrEnum):
     PARKED = "parked"
 
 
+class AuthorityLevel(StrEnum):
+    """authority.level vocabulary. Was a schema comment only
+    (docs/IMPLEMENTATION_PLAN.md) until adapters/authority wired a resolver —
+    not carried into the 001_core.py migration, so there was never a CHECK
+    constraint or a domain type for it."""
+
+    MUNICIPALITY = "municipality"
+    REGION = "region"
+    MINISTRY = "ministry"
+    UTILITY = "utility"
+    OTHER = "other"
+
+
 class GeoGranularity(StrEnum):
     """Geocoding never returns a bare point (ARCHITECTURE.md > Greek). This is drawn in the UI."""
 
@@ -51,6 +64,7 @@ class ProblemStatus(StrEnum):
     ACTED_UPON = "acted_upon"
     RESOLVED = "resolved"
     RECURRING = "recurring"
+    MERGED = "merged"  # ER decided this row is a duplicate of another problem
 
 
 @dataclass(frozen=True, slots=True)

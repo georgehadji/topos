@@ -187,14 +187,16 @@ scoring, routing and alerting are deterministic code — do not put an LLM in th
 
 ---
 
-## Search (ADR-010)
+## Search (ADR-010, rerank stage superseded by ADR-013)
 
-Raw chunks are **lexical only** (Greek FTS + trigram). Embeddings exist **only for the derived
-layer** — problems, summaries, claim values (~800k vectors, not 15M). This is why pgvector
-suffices and no vector database is needed.
+Raw chunks are **lexical only** (Greek FTS + trigram).
 
 Retrieval: lexical first pass (high recall on Greek proper nouns and administrative IDs) →
-vector rerank → optional graph expansion → RRF fusion.
+rerank → optional graph expansion → RRF fusion.
+
+The rerank stage runs via a hosted cross-encoder (OpenRouter `/rerank`), not the pgvector
+pipeline ADR-010 originally implied — see ADR-013 for why. `problem_vec` (migration 001_core.py)
+is dead schema as a result: created, never written, never read.
 
 ---
 

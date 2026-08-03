@@ -7,28 +7,58 @@ Text matching runs against `chunk.tsv` — the stored, GIN-indexed tsvector over
 document body text — reached from a problem through problem_claim -> claim ->
 chunk. Problem titles are matched too, but a title is one short line; the body
 is where the Greek actually lives.
+
+ARCHITECTURE.md > Search: "lexical first pass -> vector rerank -> graph
+expansion -> RRF fusion." This adds the rerank stage (ADR-013): when a
+Reranker is injected and query.text is set, the lexical pass over-fetches a
+candidate window and a cross-encoder reorders it before the page is sliced.
 """
 
 from __future__ import annotations
+
+import logging
+from typing import Any
 
 import asyncpg
 
 from topos.domain.search import SearchQuery, SearchResponse, SearchResult
 
+logger = logging.getLogger(__name__)
+
+# Typed as Any, not service.ports.Reranker: adapters/ sits below service/ in
+# the layered-architecture contract (.importlinter), so adapters code must
+# never import from service — even a Protocol. Structural typing means the
+# concrete adapters.rerank.OpenRouterReranker satisfies that Protocol without
+# either side importing the other.
+
 # One fragment, long enough to read, short enough for a result list.
 _HEADLINE_OPTS = "MaxFragments=1,MaxWords=20,MinWords=5,StartSel=<b>,StopSel=</b>"
+
+# Retrieve 20-50, rerank, return 5-10: below ~20 candidates there is little
+# for a cross-encoder to reorder; above ~100 the added latency and per-call
+# cost stop paying for themselves. See docs/adr/ADR-013.
+_MIN_RERANK_CANDIDATES = 50
 
 
 class SearchRepo:
     """Postgres search implementation."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        reranker: Any = None,
+        *,
+        min_candidates: int = _MIN_RERANK_CANDIDATES,
+    ) -> None:
         self._pool = pool
+        self._reranker = reranker
+        self._min_candidates = min_candidates
 
     async def search(self, query: SearchQuery) -> SearchResponse:
         """Execute a search against the problem table.
 
-        Lexical first pass via greek_cfg over chunk.tsv, with optional geo filter.
+        Lexical first pass via greek_cfg over chunk.tsv, with optional geo
+        filter, then an optional rerank pass over a wider candidate window.
         """
         conditions: list[str] = []
         params: list[object] = []
@@ -87,6 +117,15 @@ class SearchRepo:
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
         where_params = list(params)
 
+        # Reranking needs a wider window to reorder — the final page comes
+        # from Python slicing, not SQL, once that happens. No text query
+        # means no candidate text to rerank on, so it never applies there.
+        use_rerank = bool(query.text) and query.rerank and self._reranker is not None
+        fetch_limit = (
+            max(query.offset + query.limit, self._min_candidates) if use_rerank else query.limit
+        )
+        fetch_offset = 0 if use_rerank else query.offset
+
         sql = f"""
             SELECT p.id, p.title, p.category,
                    ST_X(p.geom) AS lon, ST_Y(p.geom) AS lat,
@@ -96,8 +135,8 @@ class SearchRepo:
             {join_clause}
             WHERE {where_clause}
             ORDER BY {order_by}
-            LIMIT {next_param(query.limit)}
-            OFFSET {next_param(query.offset)}
+            LIMIT {next_param(fetch_limit)}
+            OFFSET {next_param(fetch_offset)}
         """
 
         count_sql = f"""
@@ -124,4 +163,30 @@ class SearchRepo:
             for r in rows
         ]
 
+        if use_rerank:
+            results = await self._rerank(query.text, results)
+            results = results[query.offset : query.offset + query.limit]
+
         return SearchResponse(results=results, total=total or 0, query=query)
+
+    async def _rerank(self, text: str, results: list[SearchResult]) -> list[SearchResult]:
+        """Reorder *results* by cross-encoder relevance to *text*.
+
+        Fail open: any rerank error returns lexical order unchanged. A down
+        rerank vendor must degrade search, never break it — the same
+        discipline as the LLM decorator stack (BudgetGuard/Retry/Cache).
+        """
+        if not results or self._reranker is None:
+            return results
+
+        documents = [r.snippet or r.title for r in results]
+        try:
+            ranked = await self._reranker(text, documents, top_n=len(documents))
+        except Exception:
+            logger.warning("rerank failed, falling back to lexical order", exc_info=True)
+            return results
+
+        if not ranked:
+            return results
+
+        return [results[idx] for idx, _score in ranked if 0 <= idx < len(results)]

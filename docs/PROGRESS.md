@@ -84,8 +84,8 @@ Gate: the domain analyst uses it for a week and reports it beat reading feeds ma
 | # | Slice | Status |
 |---|---|---|
 | 2.1 | OCR pipeline + quality gate + Greek golden set | **SKIPPED** (not yet needed for text PDFs) |
-| 2.2 | ER: blocking + feature functions (pure) | **DONE** |
-| 2.3 | ER: clustering + reversible merges + review queue | **DONE** |
+| 2.2 | ER: blocking + feature functions (pure) | **DONE** (domain/er.py; pure functions, exercised by unit tests) |
+| 2.3 | ER: clustering + reversible merges + review queue | **DONE** for clustering + reversible merges — service/er.py now runs from the GEOCODED→RESOLVED pipeline step, merges matched problems, and revert_merge restores them. Review queue: endpoints exist in interfaces/http/review.py but nothing feeds them yet ('uncertain' verdicts are recorded in er_decision but not pushed to review_task) — **NOT DONE** |
 | 2.4 | Scoring DAG + snapshots + sensitivity analysis | **DONE** |
 | 2.5 | Greek explanations for every score | **DONE** |
 | 2.6 | Evidence: corroboration + independence testing | **DONE** |
@@ -130,7 +130,7 @@ Fill as measured. Empty rows are unanswered questions, not zeros.
 | OCR CER on golden set | < 5% | — | — |
 | Extraction F1 (problem statement) | > 0.80 | 1.00 (golden set evaluation) | 2026-07-27 |
 | Geocode accuracy @100m | > 0.70 | > 0.95 (curated gazetteer matching) | 2026-07-27 |
-| ER pairwise F1 | > 0.85 | ~ 0.92 (unit test verification) | 2026-07-27 |
+| ER pairwise F1 | > 0.85 | — (previous 0.92 measured domain/er.py's pure functions in isolation; the clustering path they feed was never invoked in production, so this did not reflect real merge quality) | — |
 | Retrieval nDCG@10 (Greek queries) | > 0.65 | — | — |
 | Search p95 latency | < 2 s | < 20 ms (index-optimized raw SQL) | 2026-07-27 |
 | Monthly LLM spend | < €250 | — | — |

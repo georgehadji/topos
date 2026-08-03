@@ -71,8 +71,12 @@ def _xai_name(model: str) -> str:
     return model.split("/", 1)[-1] if _is_grok(model) else model
 
 
-def _openrouter_name(model: str) -> str:
-    """OpenRouter namespaces Grok under ``x-ai/``."""
+def openrouter_name(model: str) -> str:
+    """OpenRouter namespaces Grok under ``x-ai/``.
+
+    Public: interfaces/ derives the OpenRouter fallback slug from
+    settings.xai_model here rather than hardcoding a second literal.
+    """
     if _is_grok(model) and "/" not in model:
         return f"x-ai/{model}"
     return model
@@ -114,7 +118,7 @@ def build_llm_client(
             primary=primary,
             fallback=fallback,
             primary_model=_xai_name(s.llm_model),
-            fallback_model=s.llm_fallback_model or _openrouter_name(s.llm_model),
+            fallback_model=s.llm_fallback_model or openrouter_name(s.llm_model),
         )
     else:
         provider = OpenRouterProvider(

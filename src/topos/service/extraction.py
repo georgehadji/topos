@@ -58,6 +58,9 @@ _PROMPT_TEMPLATE = (
     "  3. **span_start** \u2014 the character offset where evidence"
     " for this claim begins\n"
     "  4. **span_end** \u2014 the character offset where evidence ends\n"
+    "  5. **confidence** \u2014 a number from 0.0 to 1.0: how certain the"
+    " source text is (explicit and specific = high; vague, rumoured, or"
+    " second-hand = low)\n"
     "\n"
     "If there are NO citizen-affecting problems in this text, return an"
     " empty JSON array.\n"
@@ -147,10 +150,11 @@ def _validate_claims(raw: list[Any], chunk_text: str) -> list[ExtractedClaim]:
         if span_start < 0 or span_end > text_len or span_start >= span_end:
             continue
 
-        # claim.confidence is NOT NULL in the schema, and models routinely omit
-        # the field however firmly the prompt asks for it. An unstated
-        # confidence is not a confident claim, so it defaults to the midpoint
-        # rather than to 1.0.
+        # claim.confidence is NOT NULL in the schema. The prompt asks for it
+        # (rule 5 above), but a model can still omit or malform it — this is
+        # the guard for that case, not the primary source of the value. An
+        # unstated confidence is not a confident claim, so it defaults to the
+        # midpoint rather than to 1.0.
         confidence = _DEFAULT_CONFIDENCE
         raw_conf = item.get("confidence")
         if raw_conf is not None:

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from topos.adapters.db.search_repo import SearchRepo
 from topos.config import get_settings
 from topos.domain.search import SearchQuery
+from topos.interfaces.rerank_factory import build_reranker
 
 router = APIRouter(prefix="/api")
 
@@ -31,17 +32,20 @@ async def search(
     predicates: str | None = Query(default=None),
     limit: int = 20,
     offset: int = 0,
+    rerank: bool = True,
     pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
 ) -> dict[str, object]:
-    """Search mentions with FTS + optional filters."""
+    """Search mentions with FTS + optional filters, reranked (ADR-013)."""
+    settings = get_settings()
     pred_list = predicates.split(",") if predicates else None
     query = SearchQuery(
         text=text,
         predicates=pred_list,
         limit=limit,
         offset=offset,
+        rerank=rerank,
     )
-    repo = SearchRepo(pool)
+    repo = SearchRepo(pool, build_reranker(settings), min_candidates=settings.rerank_candidates)
     response = await repo.search(query)
     return {
         "results": [

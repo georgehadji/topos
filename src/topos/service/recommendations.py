@@ -13,7 +13,9 @@ from datetime import UTC, datetime
 
 import asyncpg
 
+from topos.domain.problem import can_transition
 from topos.domain.recommendations import Recommendation
+from topos.domain.types import ProblemStatus
 
 
 class RecommendationService:
@@ -88,7 +90,13 @@ class RecommendationService:
         problem_id: str,
         actor: str,
     ) -> None:
-        """Approve a recommendation (human sign-off)."""
+        """Approve a recommendation (human sign-off).
+
+        Human approval substitutes for the automated corroboration/verification
+        chain, so this jumps straight from CANDIDATE to TRACKED.
+        """
+        if not can_transition(ProblemStatus.CANDIDATE, ProblemStatus.TRACKED):
+            raise ValueError("candidate -> tracked is not a legal transition")
         now = datetime.now(UTC)
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -105,7 +113,15 @@ class RecommendationService:
             )
 
     async def reject(self, problem_id: str, actor: str, reason: str = "") -> None:
-        """Reject a recommendation."""
+        """Reject a recommendation.
+
+        There is no dedicated REJECTED status (ARCHITECTURE.md keeps the
+        status vocabulary small); a rejection is recorded as RESOLVED — the
+        problem is not being tracked further, which is what RESOLVED means
+        to every downstream reader.
+        """
+        if not can_transition(ProblemStatus.CANDIDATE, ProblemStatus.RESOLVED):
+            raise ValueError("candidate -> resolved is not a legal transition")
         now = datetime.now(UTC)
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -126,6 +142,8 @@ class RecommendationService:
 
         Only approved recommendations can be exported (L6).
         """
+        if not can_transition(ProblemStatus.TRACKED, ProblemStatus.ACTED_UPON):
+            raise ValueError("tracked -> acted_upon is not a legal transition")
         now = datetime.now(UTC)
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(

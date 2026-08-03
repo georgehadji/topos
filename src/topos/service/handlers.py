@@ -17,9 +17,10 @@ from typing import Any
 import asyncpg
 
 from topos.domain.types import PipelineRow, PipelineState
+from topos.service.er import run_er
 from topos.service.extraction import extract_artifact
 from topos.service.mentions import persist_extraction
-from topos.service.ports import BlobReader, Geocoder, TextExtractor
+from topos.service.ports import AuthorityResolver, BlobReader, Geocoder, TextExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +76,25 @@ class PipelineHandlers:
         geocoder: Geocoder,
         blob: BlobReader,
         extract_text: TextExtractor,
+        *,
+        model: str,
+        authority_resolver: AuthorityResolver | None = None,
     ) -> None:
         self.pool = pool
         self.llm_client = llm_client
         self.geocoder = geocoder
         self.blob = blob
         self.extract_text = extract_text
+        # Optional: authority resolution shares handle_extracted's claim scan
+        # but is a separate, smaller alias table (adapters/authority) — a
+        # missing resolver degrades to "no authority linked", same tolerance
+        # as a missing geocoder result.
+        self.authority_resolver = authority_resolver
+        # The one place this string lives. Passed through to extract_artifact
+        # and into the extraction_run row it writes, so provenance always
+        # names the model that was actually configured to run — never a
+        # literal that drifts from it.
+        self.model = model
 
     async def handle_fetched(self, row: PipelineRow) -> None:
         """FETCHED -> TEXTIFIED.
@@ -187,6 +201,7 @@ class PipelineHandlers:
                 self.llm_client,
                 row.artifact_id,
                 chunks,
+                model=self.model,
             )
 
             # Persist claims using the Mentions service
@@ -200,7 +215,7 @@ class PipelineHandlers:
                 run_id,
                 row.artifact_id,
                 extraction.prompt_ver,
-                "mistralai/mistral-large-2512",
+                self.model,
                 "{}",
             )
 
@@ -210,7 +225,10 @@ class PipelineHandlers:
     async def handle_extracted(self, row: PipelineRow) -> None:
         """EXTRACTED -> GEOCODED.
 
-        Performs geocoding lookup for all extracted claims.
+        Performs geocoding and authority-resolution lookups for all
+        extracted claims. Both scan the same candidate strings — extraction
+        never emits a structured place or authority field, only free text —
+        so one pass over the claim covers them.
         """
         async with self.pool.acquire() as conn:
             # Read all claims for this artifact
@@ -225,23 +243,34 @@ class PipelineHandlers:
                     with contextlib.suppress(Exception):
                         val = json.loads(val)
 
+                candidates = _toponym_candidates(val)
+
                 # Try every string in the claim, place-like keys first. Models
                 # put the location wherever they like — affected_areas,
                 # neighbourhood, or buried in description — so whitelisting
                 # three key names geocoded almost nothing.
                 geo_res = None
-                for candidate in _toponym_candidates(val):
+                for candidate in candidates:
                     geo_res = self.geocoder(candidate)
                     if geo_res:
                         break
-                if geo_res:
-                    # Update problem coordinate
-                    # Find problem linked to this claim
-                    prob_ids = await conn.fetch(
-                        "SELECT problem_id FROM problem_claim WHERE claim_id = $1::uuid",
-                        claim["id"],
-                    )
-                    for p_row in prob_ids:
+
+                authority_res = None
+                if self.authority_resolver is not None:
+                    for candidate in candidates:
+                        authority_res = self.authority_resolver(candidate)
+                        if authority_res:
+                            break
+
+                if geo_res is None and authority_res is None:
+                    continue
+
+                prob_ids = await conn.fetch(
+                    "SELECT problem_id FROM problem_claim WHERE claim_id = $1::uuid",
+                    claim["id"],
+                )
+                for p_row in prob_ids:
+                    if geo_res:
                         await conn.execute(
                             """
                             UPDATE problem SET
@@ -254,13 +283,24 @@ class PipelineHandlers:
                             geo_res.confidence,
                             p_row["problem_id"],
                         )
+                    if authority_res:
+                        await conn.execute(
+                            "UPDATE problem SET authority_id = $1::uuid WHERE id = $2::uuid",
+                            authority_res.id,
+                            p_row["problem_id"],
+                        )
 
-    async def handle_geocoded(self, row: PipelineRow) -> None:
+    async def handle_geocoded(self, _row: PipelineRow) -> None:
         """GEOCODED -> RESOLVED.
 
-        Marks entity resolution step completed (or noop in Phase 1).
+        Runs entity resolution over every candidate problem. Not scoped to
+        this row's artifact — ER compares across the whole candidate set, so
+        it has to be. Idempotent (see run_er's docstring): re-running after
+        every artifact is wasteful at scale but harmless, and correct is
+        cheaper to reason about than scoped-but-subtly-wrong. The
+        blocking-key ceiling that will matter first is noted in service/er.py.
         """
-        pass
+        await run_er(self.pool)
 
     def get_map(self) -> dict[PipelineState, Any]:
         """Get the full FSM State to Handler mapping."""

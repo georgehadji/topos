@@ -1,8 +1,11 @@
 """Problem lifecycle. Event-sourced projection logic (ADR-007). Slice 2.x.
 
-STUB — schema ships in Phase 0 (see migration 001: problem, problem_event,
-problem_claim), the algorithm ships in Phase 2. Do not implement ahead of
-docs/PROGRESS.md; a half-built state machine is worse than an honest stub.
+Schema shipped in Phase 0 (see migration 001: problem, problem_event,
+problem_claim). The automated corroboration/verification pipeline that would
+drive CANDIDATE -> CORROBORATED -> VERIFIED -> TRACKED is still a stub — this
+table only encodes edges that real callers exercise today: the automated
+chain, human approval/rejection (RecommendationService bypasses corroboration
+because a human sign-off substitutes for it), and ER merges (service/er.py).
 """
 
 from __future__ import annotations
@@ -12,13 +15,21 @@ from topos.domain.types import ProblemStatus
 # Valid status transitions. Enforced here, not in SQL, so it is unit-testable
 # without a database. See ARCHITECTURE.md > functional core.
 _ALLOWED: dict[ProblemStatus, frozenset[ProblemStatus]] = {
-    ProblemStatus.CANDIDATE: frozenset({ProblemStatus.CORROBORATED}),
+    ProblemStatus.CANDIDATE: frozenset(
+        {
+            ProblemStatus.CORROBORATED,
+            ProblemStatus.TRACKED,  # human approval (RecommendationService.approve)
+            ProblemStatus.RESOLVED,  # human rejection (RecommendationService.reject)
+            ProblemStatus.MERGED,  # ER merge into another problem (service/er.py)
+        }
+    ),
     ProblemStatus.CORROBORATED: frozenset({ProblemStatus.VERIFIED, ProblemStatus.CANDIDATE}),
     ProblemStatus.VERIFIED: frozenset({ProblemStatus.TRACKED}),
     ProblemStatus.TRACKED: frozenset({ProblemStatus.ACTED_UPON}),
     ProblemStatus.ACTED_UPON: frozenset({ProblemStatus.RESOLVED, ProblemStatus.RECURRING}),
     ProblemStatus.RESOLVED: frozenset({ProblemStatus.RECURRING}),
     ProblemStatus.RECURRING: frozenset({ProblemStatus.TRACKED}),
+    ProblemStatus.MERGED: frozenset(),  # terminal — revert_merge restores status explicitly
 }
 
 

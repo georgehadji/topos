@@ -6,6 +6,8 @@ and _validate_claims. No IO, no mocks.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from topos.domain.extraction import Span
 from topos.service.extraction import _parse_response, _validate_claims
 
@@ -130,6 +132,50 @@ def test_validate_accepts_start_end_aliases() -> None:
     result = _validate_claims(raw, "quiet loud here")
     assert len(result) == 1
     assert result[0].span == Span(start=2, end=6)
+
+
+def test_validate_uses_stated_confidence() -> None:
+    raw = [
+        {
+            "predicate": "pothole",
+            "value": "large pothole, clearly visible",
+            "span_start": 0,
+            "span_end": 10,
+            "confidence": 0.9,
+        }
+    ]
+    result = _validate_claims(raw, "0123456789")
+    assert result[0].claim.confidence == Decimal("0.9")
+
+
+def test_validate_defaults_confidence_when_omitted() -> None:
+    raw = [{"predicate": "pothole", "value": "maybe a pothole", "span_start": 0, "span_end": 10}]
+    result = _validate_claims(raw, "0123456789")
+    assert result[0].claim.confidence == Decimal("0.5")
+
+
+def test_validate_clamps_out_of_range_confidence() -> None:
+    raw = [
+        {"predicate": "a", "value": "v", "span_start": 0, "span_end": 5, "confidence": 5},
+        {"predicate": "b", "value": "v", "span_start": 0, "span_end": 5, "confidence": -1},
+    ]
+    result = _validate_claims(raw, "0123456789")
+    assert result[0].claim.confidence == Decimal("1")
+    assert result[1].claim.confidence == Decimal("0")
+
+
+def test_validate_ignores_unparseable_confidence() -> None:
+    raw = [
+        {
+            "predicate": "pothole",
+            "value": "bad",
+            "span_start": 0,
+            "span_end": 5,
+            "confidence": "very sure",
+        }
+    ]
+    result = _validate_claims(raw, "0123456789")
+    assert result[0].claim.confidence == Decimal("0.5")
 
 
 def test_validate_multiple_claims_mixed_quality() -> None:

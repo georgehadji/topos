@@ -49,7 +49,9 @@ async def test_handle_fetched_stores_the_real_fetched_bytes() -> None:
     )
 
     blob = _blob(_GREEK.encode("utf-8"))
-    handlers = PipelineHandlers(mock_pool, MagicMock(), geocode, blob, extract_text)
+    handlers = PipelineHandlers(
+        mock_pool, MagicMock(), geocode, blob, extract_text, model="test-model"
+    )
     await handlers.handle_fetched(row)
 
     blob.get.assert_awaited_once_with("deadbeef")
@@ -84,7 +86,12 @@ async def test_handle_fetched_parks_unreadable_bytes_instead_of_inventing_text()
     )
 
     handlers = PipelineHandlers(
-        mock_pool, MagicMock(), geocode, _blob(b"%PDF-1.4 not really a pdf"), extract_text
+        mock_pool,
+        MagicMock(),
+        geocode,
+        _blob(b"%PDF-1.4 not really a pdf"),
+        extract_text,
+        model="test-model",
     )
 
     with pytest.raises(ValueError, match="no_text_layer"):
@@ -114,7 +121,9 @@ async def test_handle_textified_inserts_chunk() -> None:
         last_error=None,
     )
 
-    handlers = PipelineHandlers(mock_pool, MagicMock(), geocode, _blob(), extract_text)
+    handlers = PipelineHandlers(
+        mock_pool, MagicMock(), geocode, _blob(), extract_text, model="test-model"
+    )
     await handlers.handle_textified(row)
 
     assert mock_conn.fetchval.call_count == 2
@@ -143,7 +152,9 @@ async def test_handle_extracted_triggers_geocoding() -> None:
         last_error=None,
     )
 
-    handlers = PipelineHandlers(mock_pool, MagicMock(), geocode, _blob(), extract_text)
+    handlers = PipelineHandlers(
+        mock_pool, MagicMock(), geocode, _blob(), extract_text, model="test-model"
+    )
     await handlers.handle_extracted(row)
 
     # Should geocode 'Εγνατία' (which is in the in-memory gazetteer) and execute updates

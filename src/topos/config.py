@@ -39,6 +39,10 @@ class Settings(BaseSettings):
         default="", validation_alias=AliasChoices("TOPOS_XAI_API_KEY", "XAI_API_KEY")
     )
     xai_base_url: str = Field(default="https://api.x.ai/v1")
+    # Single source of truth for the Grok model name. xai.py's own default
+    # exists only for tests that construct XaiProvider() directly — every
+    # production construction site (interfaces/cli/main.py) must pass this.
+    xai_model: str = Field(default="grok-4.5")
     llm_fallback_model: str = Field(default="")  # OpenRouter slug e.g. "x-ai/grok-4.5"
 
     # ── Web search engines (adapters/sources/websearch.py) ───────────────────
@@ -51,6 +55,16 @@ class Settings(BaseSettings):
     tavily_api_key: str = Field(default="")
     serper_api_key: str = Field(default="")
     searxng_base_url: str = Field(default="")  # self-hosted, needs no key
+
+    # ── Search reranking (adapters/rerank, ADR-013) ──────────────────────────
+    rerank_enabled: bool = Field(default=True)
+    # Comma-separated OpenRouter model slugs, tried in order. Token-priced
+    # models beat Cohere's flat per-search rate at Topos' candidate counts —
+    # see docs/adr/ADR-013 for the comparison.
+    rerank_models: str = Field(
+        default="voyageai/rerank-2.5-lite,nvidia/llama-nemotron-rerank-vl-1b-v2:free"
+    )
+    rerank_candidates: int = Field(default=50)
 
     log_level: str = Field(default="INFO")
 

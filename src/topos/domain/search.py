@@ -27,6 +27,10 @@ class SearchQuery:
     radius_km: float | None = None
     limit: int = 20
     offset: int = 0
+    rerank: bool = True
+    """Cross-encoder rerank of the lexical hits (ADR-013). Only takes effect
+    when text is set and the caller injected a Reranker — otherwise this is
+    a no-op, never an error."""
 
 
 @dataclass(frozen=True, slots=True)

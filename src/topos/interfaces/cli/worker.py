@@ -14,6 +14,7 @@ from contextlib import suppress
 
 import asyncpg
 
+from topos.adapters.authority import resolve_authority
 from topos.adapters.blob.s3 import S3BlobStore
 from topos.adapters.db.pipeline_repo import PipelineRepo
 from topos.adapters.geocode import geocode
@@ -91,7 +92,19 @@ async def main(*, drain: bool = False) -> None:
         access_key_id=settings.s3_access_key,
         secret_access_key=settings.s3_secret_key,
     )
-    handlers = PipelineHandlers(pool, llm_client, geocode, blob, extract_text)
+    # settings.llm_model is the single source of truth for what extraction_run
+    # records as having run — "mock" when claims are fabricated rather than a
+    # model name that never actually served the request.
+    model = "mock" if is_placeholder_key(settings.llm_api_key) else settings.llm_model
+    handlers = PipelineHandlers(
+        pool,
+        llm_client,
+        geocode,
+        blob,
+        extract_text,
+        model=model,
+        authority_resolver=resolve_authority,
+    )
 
     shutdown_event = asyncio.Event()
 

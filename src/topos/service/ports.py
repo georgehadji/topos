@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from topos.domain.authority import AuthorityRef
 from topos.domain.geo import GeocodeResult
 from topos.domain.pipeline_fsm import StepOutcome
 from topos.domain.types import ArtifactId, PipelineRow, PipelineState
@@ -63,6 +64,31 @@ class Geocoder(Protocol):
     """
 
     def __call__(self, toponym: str) -> GeocodeResult | None: ...
+
+
+class Reranker(Protocol):
+    """Cross-encoder rerank: query + candidate texts -> a reordering.
+
+    Implemented by adapters.rerank (ADR-013). Returns (original_index,
+    relevance_score) pairs sorted best-first, truncated to top_n — the
+    caller reorders its own candidate list using the index, it is never
+    handed documents back.
+    """
+
+    async def __call__(
+        self, query: str, documents: list[str], *, top_n: int
+    ) -> list[tuple[int, float]]: ...
+
+
+class AuthorityResolver(Protocol):
+    """Free text -> a known responsible office. Implemented by adapters.authority.
+
+    Deliberately a callable protocol, same reasoning as Geocoder: the adapter
+    exposes a module-level ``resolve_authority()`` function, injected rather
+    than imported (service-ports-only).
+    """
+
+    def __call__(self, text: str) -> AuthorityRef | None: ...
 
 
 class TextExtractor(Protocol):

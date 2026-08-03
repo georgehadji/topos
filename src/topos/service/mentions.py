@@ -97,8 +97,13 @@ async def _upsert_mention(
     Labelled as "mention" — the UI will display "mentions" not "problems"
     until Phase 2 entity resolution ships.
     """
-    # Simple 1:1 mapping: one mention per unique (predicate, artifact_id)
-    # Phase 2 ER will merge these.
+    # One mention per unique (predicate, artifact_id) claim. Phase 2 ER
+    # (service/er.py) merges duplicates after the fact — this insert does not
+    # attempt to find an existing problem itself.
+    #
+    # The id is a fresh uuid4 every call, so an ON CONFLICT (id) clause here
+    # can never fire — it used to exist but was dead code. There is nothing
+    # to conflict with: this is unconditionally a new row.
     problem_id = uuid.uuid4()
     title = _mention_title(predicate, value)
 
@@ -106,9 +111,6 @@ async def _upsert_mention(
         """
         INSERT INTO problem (id, title, category, status, first_seen, last_seen)
         VALUES ($1::uuid, $2, $3, 'candidate', $4, $4)
-        ON CONFLICT (id) DO UPDATE SET
-          last_seen = $4,
-          version = problem.version + 1
         """,
         problem_id,
         title,
@@ -116,17 +118,53 @@ async def _upsert_mention(
         now,
     )
 
-    # Append event
-    await conn.execute(
-        """
-        INSERT INTO problem_event (problem_id, seq, kind, payload, actor)
-        VALUES ($1::uuid, 1, 'mention_discovered', $2::jsonb, 'system')
-        """,
+    await append_event(
+        conn,
         problem_id,
-        json.dumps({"predicate": predicate, "claim_id": str(claim_id)}),
+        "mention_discovered",
+        {
+            "predicate": predicate,
+            "claim_id": str(claim_id),
+        },
     )
 
     return problem_id
+
+
+async def append_event(
+    conn: asyncpg.Connection,
+    problem_id: uuid.UUID,
+    kind: str,
+    payload: dict[str, object],
+    *,
+    actor: str = "system",
+) -> None:
+    """Append one problem_event row with the next sequence number.
+
+    problem_event has UNIQUE (problem_id, seq) (001_core.py) — a hardcoded
+    seq=1 here meant a second event for the same problem raised a unique
+    violation. Every writer (this module, service/er.py's merge) must go
+    through this helper rather than pick its own seq.
+
+    # ponytail: read-then-insert, not SELECT ... FOR UPDATE. Two concurrent
+    # appends to the *same* problem_id could race on seq. Each problem is
+    # normally touched by one pipeline worker at a time, so this is narrow;
+    # upgrade to an explicit row lock if concurrent ER merges make it real.
+    """
+    await conn.execute(
+        """
+        INSERT INTO problem_event (problem_id, seq, kind, payload, actor)
+        VALUES (
+          $1::uuid,
+          COALESCE((SELECT max(seq) FROM problem_event WHERE problem_id = $1::uuid), 0) + 1,
+          $2, $3::jsonb, $4
+        )
+        """,
+        problem_id,
+        kind,
+        json.dumps(payload),
+        actor,
+    )
 
 
 def _mention_title(predicate: str, value: object) -> str:

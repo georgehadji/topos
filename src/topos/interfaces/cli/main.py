@@ -8,6 +8,7 @@ object with ``--json``, so an agent or CI job can drive the whole system::
     uv run topos-cli health --json
     uv run topos-cli seed
     uv run topos-cli backfill --source diavgeia --limit 100 --dry-run --json
+    uv run topos-cli search "βλάβη νερού" --json
     uv run topos-cli cost --month current --json
     uv run topos-cli export problems --output problems.jsonl
     uv run topos-cli worker
@@ -35,6 +36,7 @@ import uvicorn
 
 from topos import __version__
 from topos.adapters.blob.s3 import S3BlobStore
+from topos.adapters.llm import openrouter_name
 from topos.adapters.llm.sonar import SonarProvider
 from topos.adapters.llm.xai import XaiProvider
 from topos.adapters.sources import registry
@@ -44,6 +46,7 @@ from topos.interfaces.cli.admin_cmd import cost, seed
 from topos.interfaces.cli.export_cmd import cli as export_cli
 from topos.interfaces.cli.gazetteer_cmd import cli as gazetteer_cli
 from topos.interfaces.cli.io import emit, fail
+from topos.interfaces.cli.search_cmd import search as search_cmd
 from topos.interfaces.cli.worker import main as worker_main
 from topos.service.backfill import backfill_source
 
@@ -57,6 +60,7 @@ cli.add_typer(export_cli, name="export")
 cli.add_typer(gazetteer_cli, name="gazetteer")
 cli.command("seed")(seed)
 cli.command("cost")(cost)
+cli.command("search")(search_cmd)
 
 # Fields a plugin config may use for "how much to pull", most specific first.
 _LIMIT_FIELDS = ("max_per_fetch", "max_items", "max_posts", "max_per_feed", "max_pages")
@@ -195,23 +199,30 @@ def _build_plugin(kind: str, plugin_cls: Any, settings: Any) -> Any:
     """
     if kind == "social":
         # X Search runs through the xAI Responses API, which is the only
-        # endpoint exposing the x_search tool.
+        # endpoint exposing the x_search tool. settings.xai_model is the only
+        # place this model name is configured — the fallback slug is derived
+        # from it, never retyped, so the two can't drift apart.
         return plugin_cls(
             XaiProvider(
                 api_key=settings.xai_api_key,
                 base_url=settings.xai_base_url,
                 fallback_api_key=settings.llm_api_key,
                 fallback_base_url=settings.llm_base_url,
-                fallback_model=settings.llm_fallback_model or "x-ai/grok-4.5",
+                model=settings.xai_model,
+                fallback_model=settings.llm_fallback_model or openrouter_name(settings.xai_model),
             )
         )
     if kind == "sonar_web":
         # Sonar searches the web before every completion. Perplexity direct
-        # first, OpenRouter second.
+        # first, OpenRouter second. The OpenRouter-side model name is derived
+        # from settings.perplexity_model rather than hardcoded a second time —
+        # previously this branch never passed `model=` at all, so changing
+        # TOPOS_PERPLEXITY_MODEL had no effect on the OpenRouter fallback leg.
         return plugin_cls(
             SonarProvider(
                 api_key=settings.llm_api_key,
                 base_url=settings.llm_base_url,
+                model=f"perplexity/{settings.perplexity_model}",
                 perplexity_api_key=settings.perplexity_api_key,
                 perplexity_base_url=settings.perplexity_base_url,
                 perplexity_model=settings.perplexity_model,

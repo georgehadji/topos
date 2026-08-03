@@ -13,8 +13,11 @@ from typing import Any
 
 import asyncpg
 
+from topos.adapters.db.search_repo import SearchRepo
 from topos.config import get_settings
+from topos.domain.search import SearchQuery
 from topos.interfaces.mcp import register_tool
+from topos.interfaces.rerank_factory import build_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -52,71 +55,42 @@ async def _get_pool() -> asyncpg.Pool:
     },
 )
 async def search_problems(args: dict[str, Any]) -> list[dict[str, Any]]:
-    """Search problems by text, predicates, and/or location."""
-    query = args.get("query", "")
-    predicates = args.get("predicates", [])
-    lat = args.get("lat")
-    lon = args.get("lon")
-    radius_km = args.get("radius_km", 5)
-    limit = min(args.get("limit", 20), 100)
+    """Search problems by text, predicates, and/or location.
 
+    Delegates to the same SearchRepo/SearchQuery as /api/search — this tool
+    used to carry its own independent SQL, which had drifted into three real
+    bugs: ST_DWithin compared bare geometry against a metres radius with no
+    ::geography cast (SRID mismatch — PostGIS errors on that), ST_X/ST_Y
+    were swapped, and the status filter checked for a 'retracted' value that
+    was never in the ProblemStatus enum. One search implementation, not two
+    that silently diverge, also means this tool gets reranking (ADR-013)
+    for free.
+    """
+    settings = get_settings()
     pool = await _get_pool()
     try:
-        async with pool.acquire() as conn:
-            where_clauses: list[str] = ["p.status <> 'retracted'"]
-            params: list[Any] = []
-            param_idx = 1
-
-            if query:
-                where_clauses.append(
-                    f"to_tsvector('greek_cfg', p.title) @@ plainto_tsquery('greek_cfg', ${param_idx})"
-                )
-                params.append(query)
-                param_idx += 1
-
-            if predicates:
-                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(predicates)))
-                where_clauses.append(f"p.category = ANY(ARRAY[{placeholders}])")
-                params.extend(predicates)
-                param_idx += len(predicates)
-
-            if lat is not None and lon is not None:
-                where_clauses.append(
-                    f"ST_DWithin(p.geom, ST_MakePoint(${param_idx}, ${param_idx + 1}), ${param_idx + 2})"
-                )
-                params.extend([lon, lat, radius_km * 1000])
-                param_idx += 3
-
-            sql = f"""
-                SELECT
-                    p.id::text,
-                    p.title,
-                    p.category,
-                    p.status,
-                    ST_X(p.geom) AS lat,
-                    ST_Y(p.geom) AS lon,
-                    p.first_seen,
-                    p.last_seen
-                FROM problem p
-                WHERE {" AND ".join(where_clauses)}
-                ORDER BY p.last_seen DESC
-                LIMIT ${param_idx}
-            """
-            params.append(limit)
-            rows = await conn.fetch(sql, *params)
-
+        repo = SearchRepo(pool, build_reranker(settings), min_candidates=settings.rerank_candidates)
+        response = await repo.search(
+            SearchQuery(
+                text=args.get("query", ""),
+                predicates=args.get("predicates") or None,
+                lat=args.get("lat"),
+                lon=args.get("lon"),
+                radius_km=args.get("radius_km"),
+                limit=min(args.get("limit", 20), 100),
+            )
+        )
         return [
             {
-                "problem_id": str(r["id"]),
-                "title": r["title"],
-                "category": r["category"],
-                "status": r["status"],
-                "lat": float(r["lat"]) if r["lat"] else None,
-                "lon": float(r["lon"]) if r["lon"] else None,
-                "first_seen": str(r["first_seen"]),
-                "last_seen": str(r["last_seen"]),
+                "problem_id": r.problem_id,
+                "title": r.title,
+                "category": r.category,
+                "score": r.score,
+                "snippet": r.snippet,
+                "lat": r.lat,
+                "lon": r.lon,
             }
-            for r in rows
+            for r in response.results
         ]
     finally:
         await pool.close()
@@ -149,14 +123,21 @@ async def get_problem_detail(args: dict[str, Any]) -> dict[str, Any]:
     pool = await _get_pool()
     try:
         async with pool.acquire() as conn:
-            # Problem
+            # Problem. ST_X is longitude, ST_Y is latitude for a
+            # geometry(Point, 4326) — this previously had the aliases
+            # swapped (same bug service/er.py had; search_repo.py always
+            # had it right). authority_id/name were never selected despite
+            # this tool's own description promising "authority assignment".
             row = await conn.fetchrow(
                 """
                 SELECT
-                    id::text, title, category, status,
-                    ST_X(geom) AS lat, ST_Y(geom) AS lon,
-                    first_seen, last_seen, version
-                FROM problem WHERE id = $1::uuid
+                    p.id::text, p.title, p.category, p.status,
+                    ST_Y(p.geom) AS lat, ST_X(p.geom) AS lon,
+                    p.first_seen, p.last_seen, p.version,
+                    a.id::text AS authority_id, a.name AS authority_name
+                FROM problem p
+                LEFT JOIN authority a ON a.id = p.authority_id
+                WHERE p.id = $1::uuid
                 """,
                 problem_id,
             )
@@ -195,6 +176,8 @@ async def get_problem_detail(args: dict[str, Any]) -> dict[str, Any]:
             "first_seen": str(row["first_seen"]),
             "last_seen": str(row["last_seen"]),
             "version": row["version"],
+            "authority_id": row["authority_id"],
+            "authority_name": row["authority_name"],
             "claims": [
                 {
                     "claim_id": str(r["id"]),
