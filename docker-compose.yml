@@ -29,7 +29,10 @@ services:
       - log_min_duration_statement=500
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports: ["5432:5432"]
+    # Host port only — override when 5432 is unavailable (native Postgres, or
+    # on Windows a port inside `netsh int ipv4 show excludedportrange`).
+    # Must match TOPOS_DB_DSN's port in .env.
+    ports: ["${TOPOS_PG_HOST_PORT:-5433}:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U topos -d topos"]
       interval: 5s
@@ -44,7 +47,11 @@ services:
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-devonlydevonly}
     volumes:
       - miniodata:/data
-    ports: ["9000:9000", "9001:9001"]
+    # Host ports only — 9000 sits inside Windows' Hyper-V dynamic port
+    # exclusion range on some hosts (`netsh int ipv4 show excludedportrange`),
+    # which fails the bind with a permissions error, not "already in use".
+    # Must match TOPOS_S3_ENDPOINT's port in .env.
+    ports: ["${TOPOS_S3_HOST_PORT:-19000}:9000", "${TOPOS_S3_CONSOLE_HOST_PORT:-19001}:9001"]
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
