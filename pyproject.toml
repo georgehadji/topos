@@ -82,6 +82,16 @@ ignore = [
 "alembic/**" = ["E501"]
 "src/topos/adapters/sources/base.py" = ["ARG002"]
 "src/topos/adapters/sources/khmdhs.py" = ["PLR0912"]
+# Greek source names and endpoint notes belong in these docstrings; RUF002/3
+# flag every Greek capital as a possible Latin lookalike. RUF012 is a false
+# positive on the FeedConfig subclasses: ruff only exempts mutable defaults on
+# classes it can see inherit BaseModel, and it does not follow that
+# inheritance across modules.
+"src/topos/adapters/sources/civic.py" = ["RUF002", "RUF003", "RUF012"]
+"src/topos/adapters/sources/data_gov.py" = ["RUF002", "RUF003", "RUF012"]
+"src/topos/adapters/sources/feedbase.py" = ["RUF002", "RUF003", "RUF012"]
+"src/topos/adapters/sources/hazards.py" = ["RUF002", "RUF003"]
+"src/topos/adapters/sources/transport.py" = ["RUF002", "RUF003", "RUF012"]
 "src/topos/adapters/db/search_repo.py" = ["S608"]
 "src/topos/service/recommendations.py" = ["S608", "ARG002"]
 "src/topos/mcp/*" = ["PLC0415", "PLW2901", "E501"]

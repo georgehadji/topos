@@ -9,10 +9,14 @@
 Constituency problem intelligence for the **Α΄ Θεσσαλονίκης** electoral district.
 
 Ingests Greek public-sector and news sources — Διαύγεια, ΚΗΜΔΗΣ, ΦΕΚ, ΔΕΔΔΗΕ outages,
-municipal feeds, local news RSS, X/social — extracts citizen-affecting problems with an
-LLM, geolocates and deduplicates them, scores them, and serves the result as a map, a
-knowledge graph, and an agent-callable API. Every derived fact keeps a byte-range span
-back to its source document.
+the municipality and its seven suburban δήμοι, Περιφέρεια Κεντρικής Μακεδονίας, ΟΣΕΘ and
+Μετρό Θεσσαλονίκης, ΦοΔΣΑ, ΟΛΘ, data.gov.gr, Meteoalarm and NOA seismicity, local news
+RSS, X/social — extracts citizen-affecting problems with an LLM, geolocates and
+deduplicates them, scores them, and serves the result as a map, a knowledge graph, and an
+agent-callable API. Every derived fact keeps a byte-range span back to its source
+document.
+
+Run `topos-cli sources` for the live list with each plugin's configurable fields.
 
 **Deeper reference:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (the contract) ·
 [`AGENTS.md`](AGENTS.md) (working rules) · [`docs/adr/`](docs/adr) (decisions) ·
@@ -165,7 +169,8 @@ uv run pytest tests/contract -m contract   # adapters against a real PostgreSQL
 ```
 
 Contract tests need Postgres and MinIO up, and MinIO needs the `topos-artifacts` bucket.
-They read `TOPOS_TEST_PG_DSN` if set, otherwise they discover the compose host on `:5432`.
+They read `TOPOS_TEST_PG_DSN` if set, otherwise they fall back to `TOPOS_DB_DSN` from
+`.env` — the same DSN the app connects with, so the two cannot drift apart.
 
 > Contract tests delete rows for the `test` / `diavgeia` / `fek` / `deddhe` sources, so a
 > full `pytest` run empties dev data. Re-populate with `topos-cli backfill` +
