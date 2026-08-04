@@ -12,13 +12,31 @@ Labelled as "mentions" until Phase 2 ER ships (naming discipline).
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 
 import asyncpg
 
 from topos.domain.extraction import Extraction
+from topos.domain.relevance import is_out_of_area
 from topos.domain.types import ArtifactId, ProblemId  # noqa: F401
+
+logger = logging.getLogger(__name__)
+
+
+def _claim_text(predicate: str, value: object) -> str:
+    """Every string in a claim, flattened — what the relevance check reads."""
+    parts = [predicate]
+    if isinstance(value, str):
+        parts.append(value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, list):
+                parts.extend(x for x in item if isinstance(x, str))
+    return " ".join(parts)
 
 
 async def persist_extraction(
@@ -62,6 +80,19 @@ async def persist_extraction(
                     json.dumps(value),
                     claim_data.claim.confidence,
                 )
+
+                # The claim row above is kept either way: it is a true record of
+                # what the document said, and keeping it makes the filter
+                # auditable. What an out-of-area claim must not do is become a
+                # constituency *problem* — that is the artifact analysts read.
+                if is_out_of_area(_claim_text(predicate, value)):
+                    logger.info(
+                        "mentions.out_of_area_claim_skipped artifact=%s predicate=%s",
+                        extraction.artifact_id,
+                        predicate,
+                    )
+                    total_claims += 1
+                    continue
 
                 # Create or update the mention (problem) for this predicate
                 mention_id = await _upsert_mention(conn, predicate, value, claim_id, now)

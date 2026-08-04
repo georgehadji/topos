@@ -142,19 +142,24 @@ def _summarise(value: dict[str, Any]) -> str:
 
 
 def _render_claim(value: dict[str, Any], confidence: float | None) -> list[str]:
-    """One claim as Markdown lines: a summary, then whatever detail it carries."""
+    """One claim as Markdown lines: a summary, then whatever detail it carries.
+
+    The blank line before the bullets is load-bearing: without it Pandoc reads
+    them as a lazy continuation of the summary paragraph and the whole claim
+    collapses into one run-on line when converted to .docx.
+    """
     lines: list[str] = []
     summary = _summarise(value)
     if summary:
         suffix = f" *(confidence {confidence:.2f})*" if confidence is not None else ""
-        lines.append(f"  {summary}{suffix}")
+        lines.extend([f"{summary}{suffix}", ""])
 
     for key in _DETAIL_KEYS:
         if key not in value:
             continue
         rendered = _format_detail(value[key])
         if rendered:
-            lines.append(f"  - {_humanise(key)}: {rendered}")
+            lines.append(f"- {_humanise(key)}: {rendered}")
     return lines
 
 
@@ -185,7 +190,7 @@ def _render_problem(
         lines.extend(rendered)
         if claim["uri"]:
             source = claim["source_kind"] or "source"
-            lines.append(f"  - Source ({source}): {claim['uri']}")
+            lines.append(f"- Source ({source}): {claim['uri']}")
         lines.append("")
 
     return lines

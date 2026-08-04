@@ -73,12 +73,17 @@ async def backfill_source(
                     )
                     stored += 1
 
-                await conn.execute(
+                # DO NOTHING returns no row on conflict, which would leave `aid`
+                # pointing at an artifact that was never written — the next
+                # insert then violates pipeline's FK. DO UPDATE on a no-op
+                # column always returns the row, new or pre-existing.
+                real_aid = await conn.fetchval(
                     """
                     INSERT INTO artifact
                       (id, source_id, uri, sha256, blob_key, mime, bytes, fetched_at)
                     VALUES ($1::uuid, $2, $3, $4::bytea, $5, $6, $7, now())
-                    ON CONFLICT (source_id, uri, sha256) DO NOTHING
+                    ON CONFLICT (source_id, uri, sha256) DO UPDATE SET uri = artifact.uri
+                    RETURNING id
                     """,
                     aid,
                     source_kind,
@@ -95,7 +100,7 @@ async def backfill_source(
                     VALUES ($1::uuid, 'fetched'::pipe_state)
                     ON CONFLICT (artifact_id) DO NOTHING
                     """,
-                    aid,
+                    real_aid,
                 )
 
                 ingested += 1
