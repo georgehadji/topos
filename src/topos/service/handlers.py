@@ -21,6 +21,7 @@ from topos.service.er import run_er
 from topos.service.extraction import extract_artifact
 from topos.service.mentions import persist_extraction
 from topos.service.ports import AuthorityResolver, BlobReader, Geocoder, TextExtractor
+from topos.service.scoring import score_all
 
 logger = logging.getLogger(__name__)
 
@@ -293,14 +294,22 @@ class PipelineHandlers:
     async def handle_geocoded(self, _row: PipelineRow) -> None:
         """GEOCODED -> RESOLVED.
 
-        Runs entity resolution over every candidate problem. Not scoped to
-        this row's artifact — ER compares across the whole candidate set, so
-        it has to be. Idempotent (see run_er's docstring): re-running after
-        every artifact is wasteful at scale but harmless, and correct is
-        cheaper to reason about than scoped-but-subtly-wrong. The
-        blocking-key ceiling that will matter first is noted in service/er.py.
+        Runs entity resolution over every candidate problem, then scores.
+        Neither is scoped to this row's artifact — ER compares across the
+        whole candidate set, and scoring's `reach` counts sources per problem,
+        so both are corpus-wide by nature. Idempotent (see run_er's
+        docstring): re-running after every artifact is wasteful at scale but
+        harmless, and correct is cheaper to reason about than
+        scoped-but-subtly-wrong. The blocking-key ceiling that will matter
+        first is noted in service/er.py.
+
+        Order matters: scoring must follow ER. A problem that ER is about to
+        fold into another would otherwise be scored on its own partial
+        evidence, and the surviving problem would be scored before inheriting
+        the loser's claims — understating reach on the row that survives.
         """
         await run_er(self.pool)
+        await score_all(self.pool)
 
     def get_map(self) -> dict[PipelineState, Any]:
         """Get the full FSM State to Handler mapping."""
