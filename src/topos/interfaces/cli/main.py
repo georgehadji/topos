@@ -46,6 +46,7 @@ from topos.interfaces.cli.admin_cmd import cost, seed
 from topos.interfaces.cli.export_cmd import cli as export_cli
 from topos.interfaces.cli.gazetteer_cmd import cli as gazetteer_cli
 from topos.interfaces.cli.io import emit, fail
+from topos.interfaces.cli.question_cmd import question_cmd
 from topos.interfaces.cli.search_cmd import search as search_cmd
 from topos.interfaces.cli.worker import main as worker_main
 from topos.service.backfill import backfill_source
@@ -61,6 +62,7 @@ cli.add_typer(gazetteer_cli, name="gazetteer")
 cli.command("seed")(seed)
 cli.command("cost")(cost)
 cli.command("search")(search_cmd)
+cli.command("question")(question_cmd)
 
 # Fields a plugin config may use for "how much to pull", most specific first.
 _LIMIT_FIELDS = ("max_per_fetch", "max_items", "max_posts", "max_per_feed", "max_pages")

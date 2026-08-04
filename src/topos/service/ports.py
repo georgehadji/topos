@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from topos.domain.authority import AuthorityRef
 from topos.domain.geo import GeocodeResult
 from topos.domain.pipeline_fsm import StepOutcome
+from topos.domain.sentiment import SentimentLabel
 from topos.domain.types import ArtifactId, PipelineRow, PipelineState
 
 
@@ -78,6 +79,21 @@ class Reranker(Protocol):
     async def __call__(
         self, query: str, documents: list[str], *, top_n: int
     ) -> list[tuple[int, float]]: ...
+
+
+class SentimentAnalyzer(Protocol):
+    """Texts -> one label each, same order, same length.
+
+    Implemented by adapters.sentiment. Mirrors ``Reranker``: a callable
+    protocol, constructed in interfaces/ and injected.
+
+    Contract on failure: **raise**. The caller decides to degrade to "no
+    sentiment recorded". An analyser that returned NEUTRAL on error would make
+    a fabricated neutral indistinguishable from a measured one, which is the
+    same class of defect as the ΔΕΔΔΗΕ sample fallback.
+    """
+
+    async def __call__(self, texts: list[str]) -> list[SentimentLabel]: ...
 
 
 class AuthorityResolver(Protocol):

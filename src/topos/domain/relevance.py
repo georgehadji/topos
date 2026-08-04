@@ -205,11 +205,19 @@ def _fold(text: str) -> str:
     return text.lower().translate(_ACCENT_MAP)
 
 
+# Greek inflects place names, and the denylist stores nominatives: a feed
+# saying "Π.Ε. ΠΕΛΛΑΣ" must match the entry "πελλα". Allowing up to two
+# trailing Greek letters before the word boundary covers the common genitive
+# and accusative endings (-ς, -ν, -ας) without swallowing unrelated words —
+# "δράμα" still does not match "δραματική", which needs four.
+_INFLECTION = r"[α-ω]{0,2}"
+
+
 def _pattern(terms: frozenset[str]) -> re.Pattern[str]:
     # Longest first so "ανω τουμπα" wins over "τουμπα"; word-bounded so a short
     # term never matches inside an unrelated word.
     ordered = sorted(terms, key=len, reverse=True)
-    return re.compile(r"\b(" + "|".join(re.escape(t) for t in ordered) + r")\b")
+    return re.compile(r"\b(" + "|".join(re.escape(t) for t in ordered) + r")" + _INFLECTION + r"\b")
 
 
 _OUT_RE = _pattern(_OUT_OF_AREA)

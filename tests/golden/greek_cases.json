@@ -1,0 +1,65 @@
+{
+  "_about": "Frozen Greek behaviour. A diff here is a decision to review, not a failure to silence by editing the expectation. Coordinates rounded to 4dp. Inputs are real strings taken from findings ingested 2026-08-02..04.",
+  "geocode": [
+    {"input": "Σταυρούπολη", "lat": 40.665, "lon": 22.928, "granularity": "neighbourhood"},
+    {"input": "κοινότητα Πεύκων", "lat": 40.6581, "lon": 22.989, "granularity": "neighbourhood"},
+    {"input": "Καλοχώρι", "lat": 40.6418, "lon": 22.8567, "granularity": "municipality"},
+    {"input": "Kalochori", "lat": 40.6418, "lon": 22.8567, "granularity": "municipality",
+     "note": "Latin transliteration must resolve identically to the Greek spelling."},
+    {"input": "Κωνσταντίνου Καραμανλή", "lat": 40.6934, "lon": 22.8466, "granularity": "street"},
+    {"input": "Βασιλίσσης Όλγας", "lat": 40.6173, "lon": 22.9546, "granularity": "street"},
+    {"input": "Λεωφόρο Μίκη Θεοδωράκη", "lat": 40.6756, "lon": 22.9388, "granularity": "street"},
+    {"input": "οδό Αναγεννήσεως", "lat": 40.6439, "lon": 22.9284, "granularity": "street",
+     "note": "Genitive with a leading common noun; the scan must not need a bare nominative."},
+    {"input": "Τριανδρία", "lat": 40.623, "lon": 22.9704, "granularity": "neighbourhood"},
+    {"input": "Θέρμη", "lat": 40.55, "lon": 23.02, "granularity": "municipality"},
+    {"input": "Πυλαία", "lat": 40.6, "lon": 22.97, "granularity": "neighbourhood"},
+    {"input": "Πανόραμα", "lat": 40.59, "lon": 23.03, "granularity": "neighbourhood"},
+    {"input": "Εύοσμος", "lat": 40.6713, "lon": 22.9162, "granularity": "neighbourhood"},
+    {"input": "Νεάπολη", "lat": 40.66, "lon": 22.938, "granularity": "neighbourhood"},
+    {"input": "Τούμπα", "lat": 40.6124, "lon": 22.961, "granularity": "neighbourhood"},
+    {"input": "Χαριλάου", "lat": 40.605, "lon": 22.965, "granularity": "neighbourhood"},
+    {"input": "Egnatia", "lat": 40.6249, "lon": 22.9611, "granularity": "street"},
+    {"input": "Θεσσαλονίκη", "lat": 40.6403, "lon": 22.9439, "granularity": "municipality"},
+    {"input": "Ταγαράδες", "lat": 40.4889, "lon": 23.0219, "granularity": "municipality"},
+    {"input": "Βασιλικά", "lat": 40.4801, "lon": 23.1363, "granularity": "municipality"},
+
+    {"input": "4η Δημοτική Κοινότητα", "expected": null, "known_gap": true,
+     "note": "Administrative unit, not a toponym. Needs a district-number table, which does not exist."},
+    {"input": "Δέλτα", "expected": null, "known_gap": true,
+     "note": "Real municipality of the constituency, absent from the gazetteer. Cheap fix: add the entry."},
+
+    {"input": "Tender for personal protective equipment", "expected": null,
+     "note": "No place named. Must stay null — inventing a centroid here is the failure mode that matters."},
+    {"input": "", "expected": null}
+  ],
+  "relevance": [
+    {"input": "Η πυρκαγιά στη Δυτική Αττική επεκτείνεται", "out_of_area": true},
+    {"input": "ferry departures to Thasos and the northeastern Aegean", "out_of_area": true},
+    {"input": "Road closure in Larissa", "out_of_area": true},
+    {"input": "ΧΥΤΑ ΑΛΜΩΠΙΑΣ Π.Ε. ΠΕΛΛΑΣ", "out_of_area": true,
+     "note": "ΦοΔΣΑ covers more than the constituency; its feed carries other prefectures."},
+    {"input": "Update on the tender for the Port of Volos", "out_of_area": true,
+     "note": "ΟΛΘ is a Thessaloniki body that also operates elsewhere."},
+
+    {"input": "διακοπή νερού στη Σταυρούπολη", "out_of_area": false},
+    {"input": "Προγραμματισμένη διακοπή ρεύματος: ΘΕΡΜΗΣ Δ.Ε.ΒΑΣΙΛΙΚΩΝ", "out_of_area": false},
+    {"input": "Το μετρό Θεσσαλονίκης σε σύγκριση με το μετρό της Αθήνας", "out_of_area": false,
+     "note": "Naming Athens does not make a Thessaloniki story an Athens story."},
+    {"input": "Κεντρική Μακεδονία, έργα υποδομής", "out_of_area": false,
+     "note": "Thessaloniki is in Macedonia; listing it would drop local findings."},
+    {"input": "Tender declared void, repetition required", "out_of_area": false,
+     "note": "Placeless council business is the common case and must survive."}
+  ],
+  "authority": [
+    {"input": "ΕΥΑΘ (Water Supply and Sewerage Company)", "authority": "ΕΥΑΘ"},
+    {"input": "η ΕΥΑΘ ενημερώνει τους καταναλωτές", "authority": "ΕΥΑΘ"},
+    {"input": "Διακοπή ρεύματος από τη ΔΕΔΔΗΕ", "authority": "ΔΕΔΔΗΕ"},
+    {"input": "δρομολόγια του ΟΑΣΘ", "authority": "ΟΑΣΘ"},
+    {"input": "απόφαση του Δήμου Θεσσαλονίκης", "authority": "Δήμος Θεσσαλονίκης",
+     "note": "Genitive form must resolve."},
+    {"input": "Municipality of Thessaloniki announced", "authority": "Δήμος Θεσσαλονίκης"},
+    {"input": "γενική ανακοίνωση χωρίς φορέα", "authority": null,
+     "note": "Never guess a responsible office from context alone."}
+  ]
+}
