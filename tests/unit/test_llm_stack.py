@@ -93,6 +93,22 @@ async def test_cache_hits_memory() -> None:
     assert res1 == res2
 
 
+@pytest.mark.asyncio
+async def test_cache_counts_hits_and_misses_separately() -> None:
+    """ADR-015: Cache is the only layer that ever sees a hit — Telemetry by
+    design never does — so it must keep its own count rather than relying on
+    extraction_run to reconstruct the hit rate."""
+    provider = DummyProvider({"choices": [{"message": {"content": "x"}}]})
+    cache = Cache(provider, pool=None)
+
+    await cache.complete(prompt="A", model="test-model")
+    await cache.complete(prompt="A", model="test-model")
+    await cache.complete(prompt="B", model="test-model")
+
+    assert cache.misses == 2
+    assert cache.hits == 1
+
+
 # ── FallbackProvider tests ───────────────────────────────────────────────────
 
 

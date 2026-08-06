@@ -12,6 +12,7 @@ from typing import Any
 
 import asyncpg
 
+from topos.domain.pricing import cost_eur
 from topos.domain.types import ArtifactId
 
 
@@ -83,19 +84,25 @@ class Telemetry:
                 tokens_in = usage.get("prompt_tokens")
                 tokens_out = usage.get("completion_tokens")
 
+        # None when the model has no price-table entry (domain/pricing.py) —
+        # never 0. A 0 here would assert the call was free, which is a
+        # stronger and false claim than "not yet priced" (ADR-014).
+        cost = cost_eur(model, tokens_in, tokens_out)
+
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO extraction_run
                   (id, artifact_id, prompt_ver, model, params, started_at, cost_eur,
                    tokens_in, tokens_out, ok)
-                VALUES ($1, $2, $3, $4, '{}', $5, 0, $6, $7, $8)
+                VALUES ($1, $2, $3, $4, '{}', $5, $6, $7, $8, $9)
                 """,
                 uuid.uuid4(),
                 artifact_id,
                 prompt_ver,
                 model,
                 started,
+                cost,
                 tokens_in,
                 tokens_out,
                 ok,

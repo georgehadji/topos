@@ -2,15 +2,26 @@
 
 Cache the response so identical extraction tasks on the same document
 (e.g. during backfill reruns) do not re-invoke the API.
+
+A hit must never reach Telemetry: it wrote a real extraction_run row for
+every call, including cache hits, which meant "a model was invoked" and "an
+answer was returned from cache" were indistinguishable in the ledger — and
+made the hit rate itself unmeasurable, since a hit and a miss produced the
+same row shape. Cache sits outside Telemetry in the stack precisely so a hit
+returns before Telemetry is ever reached; the counters below are this
+module's own record of what the wrapped stack was spared.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
 import asyncpg
+
+logger = logging.getLogger(__name__)
 
 
 class Cache:
@@ -20,6 +31,8 @@ class Cache:
         self._inner = inner
         self._pool = pool
         self._memory: dict[str, dict[str, Any]] = {}
+        self.hits = 0
+        self.misses = 0
 
     async def complete(
         self,
@@ -42,14 +55,17 @@ class Cache:
         ).hexdigest()
 
         if cache_key in self._memory:
+            self.hits += 1
             return self._memory[cache_key]
 
         if self._pool is not None:
             cached = await self._fetch_from_db(cache_key)
             if cached is not None:
                 self._memory[cache_key] = cached
+                self.hits += 1
                 return cached
 
+        self.misses += 1
         result = await self._inner.complete(
             prompt=prompt, model=model, response_format=response_format, **kwargs
         )
@@ -57,6 +73,15 @@ class Cache:
         self._memory[cache_key] = result
         if self._pool is not None:
             await self._store_in_db(cache_key, result)
+
+        total = self.hits + self.misses
+        if total % 20 == 0:
+            logger.info(
+                "llm_cache.rate hits=%d misses=%d rate=%.2f",
+                self.hits,
+                self.misses,
+                self.hits / total,
+            )
 
         return result  # type: ignore[no-any-return]
 

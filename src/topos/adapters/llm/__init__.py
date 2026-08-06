@@ -1,8 +1,8 @@
 """LlmClient decorator stack assembly.
 
-Architecture (ARCHITECTURE.md > LLM usage)::
+Architecture (ARCHITECTURE.md > LLM usage, ADR-015)::
 
-    BudgetGuard( Cache( Retry( Telemetry( provider ) ) ) )
+    Cache( BudgetGuard( Retry( Telemetry( provider ) ) ) )
 
 Factory function ``build_llm_client()`` wires everything together using
 project config and an optional asyncpg pool.
@@ -126,11 +126,14 @@ def build_llm_client(
             base_url=s.llm_base_url,
         )
 
-    # Decorator stack: Telemetry → Retry → Cache → BudgetGuard
-    # Innermost is Telemetry (writes extraction_run first)
+    # Decorator stack: Telemetry -> Retry -> BudgetGuard -> Cache.
+    # Innermost is Telemetry (writes extraction_run first). Cache is
+    # outermost — see ADR-015 for why: BudgetGuard used to sit outside Cache,
+    # so a request that would have been a free cache hit was refused once the
+    # monthly ceiling was reached, before the cache was ever consulted.
     provider = Telemetry(provider, pool=pool)
     provider = Retry(provider)
-    provider = Cache(provider, pool=pool)
     provider = BudgetGuard(provider, pool=pool, monthly_budget_eur=s.llm_monthly_budget_eur)
+    provider = Cache(provider, pool=pool)
 
     return StructuredLlmWrapper(provider)

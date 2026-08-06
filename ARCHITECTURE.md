@@ -163,16 +163,20 @@ independently of the database.
 
 ## LLM usage
 
-One `LlmClient` Protocol, one decorator stack:
+One `LlmClient` Protocol, one decorator stack (ADR-015):
 
 ```
-BudgetGuard( Cache( Retry( Telemetry( provider ) ) ) )
+Cache( BudgetGuard( Retry( Telemetry( provider ) ) ) )
 ```
 
-- **BudgetGuard**: hard monthly ceiling. On breach it defers work to a queue. It never overspends.
-- **Cache**: keyed on `sha256(prompt_version + model + input)`. Makes backfill reruns ~free.
-- **Telemetry**: every call writes an `extraction_run` row — prompt version, model, params,
-  tokens, cost. Nothing calls a model without leaving a record.
+- **Cache**: keyed on `sha256(prompt_version + model + input)`. Outermost — a hit returns before
+  the budget check or any real call, so a budget-exhausted month still serves every previously-seen
+  prompt for free. Makes backfill reruns ~free.
+- **BudgetGuard**: hard monthly ceiling on real spend. On breach it defers work to a queue. It
+  never overspends.
+- **Telemetry**: every real invocation writes an `extraction_run` row — prompt version, model,
+  params, tokens, cost (ADR-014). A cache hit never reaches this layer and writes no row; nothing
+  calls a model without leaving a record, and nothing recorded here was actually free.
 
 **Prompts are code**: versioned files, reviewed, with golden tests. The prompt version is stored
 on every derived fact.
