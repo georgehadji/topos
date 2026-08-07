@@ -49,7 +49,14 @@
     {"input": "Κεντρική Μακεδονία, έργα υποδομής", "out_of_area": false,
      "note": "Thessaloniki is in Macedonia; listing it would drop local findings."},
     {"input": "Tender declared void, repetition required", "out_of_area": false,
-     "note": "Placeless council business is the common case and must survive."}
+     "note": "Placeless council business is the common case and must survive."},
+
+    {"input": "Δελτίο Τύπου Περιφέρειας Θεσσαλίας. Η καταστροφική πλημμύρα που έπληξε τη Λάρισα και τα γύρω χωριά τον περασμένο μήνα εξακολουθεί να προκαλεί προβλήματα στους κατοίκους. Ο δήμαρχος Λάρισας δήλωσε ότι οι εργασίες αποκατάστασης των δρόμων θα ολοκληρωθούν έως το τέλος του έτους. Παράλληλα, η κυβέρνηση ανακοίνωσε πρόσθετη χρηματοδότηση 5 εκατομμυρίων ευρώ για την ανοικοδόμηση υποδομών στη Θεσσαλία. Οι κάτοικοι της περιοχής ζητούν άμεση παρέμβαση για την αποκατάσταση της υδροδότησης.",
+     "out_of_area": true,
+     "note": "Phase 6 #6.2: document-length input, no home term anywhere in it. Gate risk was that full text is likelier to contain a stray home-term than one claim; this case has none and must still veto."},
+    {"input": "Πρακτικά Δημοτικού Συμβουλίου Θεσσαλονίκης, συνεδρίαση αρ. 14. Συζητήθηκε το θέμα της διακοπής υδροδότησης στην περιοχή Σταυρούπολης, η οποία προκάλεσε παράπονα εκατοντάδων κατοίκων τις τελευταίες δύο εβδομάδες. Ο αντιδήμαρχος τεχνικών έργων ανέφερε ότι η ΕΥΑΘ εργάζεται για την αποκατάσταση του δικτύου. Σε σύγκριση με αντίστοιχα προβλήματα στην Αθήνα, ο εκπρόσωπος τόνισε ότι η κατάσταση στη Θεσσαλονίκη είναι πιο περιορισμένη. Το συμβούλιο ενέκρινε επιπλέον κονδύλια 200.000 ευρώ για την επισκευή του δικτύου ύδρευσης.",
+     "out_of_area": false,
+     "note": "Phase 6 #6.2: document-length, names Athens in passing (as the short-text case already covers) alongside a genuine home term — must not veto."}
   ],
   "authority": [
     {"input": "ΕΥΑΘ (Water Supply and Sewerage Company)", "authority": "ΕΥΑΘ"},

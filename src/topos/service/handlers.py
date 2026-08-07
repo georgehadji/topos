@@ -16,6 +16,8 @@ from typing import Any
 
 import asyncpg
 
+from topos.domain.gate import should_extract
+from topos.domain.simhash import simhash
 from topos.domain.types import PipelineRow, PipelineState
 from topos.service.er import run_er
 from topos.service.extraction import extract_artifact
@@ -185,7 +187,11 @@ class PipelineHandlers:
     async def handle_chunked(self, row: PipelineRow) -> None:
         """CHUNKED -> EXTRACTED.
 
-        Invokes the LLM extraction service and persists claims.
+        Gates on relevance and near-duplication (Phase 6 #6.2/#6.3) before
+        paying for extraction, then invokes the LLM and persists claims.
+        A gate refusal still advances the state — a skipped document and one
+        that legitimately yielded nothing look the same to the FSM; only the
+        log line tells them apart (domain/gate.py).
         """
         async with self.pool.acquire() as conn:
             chunks_rows = await conn.fetch(
@@ -196,6 +202,32 @@ class PipelineHandlers:
                 return
 
             chunks = [(r["ord"], r["text"]) for r in chunks_rows]
+            full_text = "\n".join(text for _, text in chunks)
+
+            # ponytail: linear scan of recent extracted chunks — one simhash
+            # comparison per row, fine at the ~10^2 documents/day this
+            # pipeline sees. Upgrade to a BK-tree or an indexed hash bucket
+            # if volume reaches 10^6.
+            recent_rows = await conn.fetch(
+                """
+                SELECT c.text FROM chunk c
+                JOIN extraction_run er ON er.artifact_id = c.artifact_id
+                WHERE c.artifact_id <> $1::uuid
+                ORDER BY er.started_at DESC
+                LIMIT 200
+                """,
+                row.artifact_id,
+            )
+            recent_hashes = tuple(simhash(r["text"]) for r in recent_rows)
+
+            decision = should_extract(full_text, recent_hashes=recent_hashes)
+            if not decision.extract:
+                logger.info(
+                    "extraction_skipped artifact=%s reason=%s",
+                    row.artifact_id,
+                    decision.reason,
+                )
+                return
 
             # Run LLM extraction
             extraction = await extract_artifact(
