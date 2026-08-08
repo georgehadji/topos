@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     )
     rerank_candidates: int = Field(default=50)
 
+    # ── LLM model cascade (adapters/llm/cascade.py, Phase 6 #6.5) ────────────
+    # Comma-separated, cheapest first. Empty (the default) disables the
+    # cascade — build_llm_client() then uses llm_model unchanged. Mirrors the
+    # rerank_models convention: a table someone opts into, not a flag that
+    # silently changes model selection.
+    llm_cascade_models: str = Field(default="")
+
     log_level: str = Field(default="INFO")
 
     @model_validator(mode="after")

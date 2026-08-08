@@ -163,20 +163,31 @@ independently of the database.
 
 ## LLM usage
 
-One `LlmClient` Protocol, one decorator stack (ADR-015):
+One `LlmClient` Protocol, one decorator stack (ADR-015, ADR-021):
 
 ```
-Cache( BudgetGuard( Retry( Telemetry( provider ) ) ) )
+Cache( BudgetGuard( [Cascade( )] Retry( Telemetry( provider ) ) ) )
 ```
+
+`Cascade` is bracketed: present only when `llm_cascade_models` is configured (Phase 6 #6.5),
+absent otherwise — the chain with it absent is exactly the order below.
 
 - **Cache**: keyed on `sha256(prompt_version + model + input)`. Outermost — a hit returns before
   the budget check or any real call, so a budget-exhausted month still serves every previously-seen
   prompt for free. Makes backfill reruns ~free.
 - **BudgetGuard**: hard monthly ceiling on real spend. On breach it defers work to a queue. It
-  never overspends.
+  never overspends. Sits outside `Cascade` so it gates a whole cascade as one spend decision, not
+  per model attempt.
+- **Cascade**: tries `llm_cascade_models` cheapest-first, escalating past a model whose raw
+  response fails to parse or whose claims are all low-confidence (`should_escalate`, a pure
+  function). Owns model selection while present — a caller's `model` argument is ignored, same as
+  `rerank_models` overrides a caller's per-call choice. Disabled by default.
+- **Retry**: per-model-attempt exponential backoff on transient failures; unaware Cascade exists
+  above it, so a transient error on the cheap model retries on that model before Cascade escalates.
 - **Telemetry**: every real invocation writes an `extraction_run` row — prompt version, model,
   params, tokens, cost (ADR-014). A cache hit never reaches this layer and writes no row; nothing
-  calls a model without leaving a record, and nothing recorded here was actually free.
+  calls a model without leaving a record, and nothing recorded here was actually free. A cascade
+  that escalates twice writes three rows, one per model actually tried.
 
 **Prompts are code**: versioned files, reviewed, with golden tests. The prompt version is stored
 on every derived fact.

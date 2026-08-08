@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from topos.adapters.llm.budget import BudgetGuard
 from topos.adapters.llm.cache import Cache
+from topos.adapters.llm.cascade import Cascade
 from topos.adapters.llm.fallback import FallbackProvider
 from topos.adapters.llm.provider import OpenRouterProvider
 from topos.adapters.llm.retry import Retry
@@ -126,13 +127,19 @@ def build_llm_client(
             base_url=s.llm_base_url,
         )
 
-    # Decorator stack: Telemetry -> Retry -> BudgetGuard -> Cache.
+    # Decorator stack: Telemetry -> Retry -> [Cascade] -> BudgetGuard -> Cache.
     # Innermost is Telemetry (writes extraction_run first). Cache is
     # outermost — see ADR-015 for why: BudgetGuard used to sit outside Cache,
     # so a request that would have been a free cache hit was refused once the
     # monthly ceiling was reached, before the cache was ever consulted.
+    # Cascade (#6.5) slots between BudgetGuard and Retry when configured: each
+    # of its attempts still goes through Retry/Telemetry individually, and
+    # BudgetGuard still gates the whole cascade as one decision.
     provider = Telemetry(provider, pool=pool)
     provider = Retry(provider)
+    cascade_models = [m.strip() for m in s.llm_cascade_models.split(",") if m.strip()]
+    if cascade_models:
+        provider = Cascade(provider, models=cascade_models)
     provider = BudgetGuard(provider, pool=pool, monthly_budget_eur=s.llm_monthly_budget_eur)
     provider = Cache(provider, pool=pool)
 

@@ -134,6 +134,7 @@ Fill as measured. Empty rows are unanswered questions, not zeros.
 | Retrieval nDCG@10 (Greek queries) | > 0.65 | — | — |
 | Search p95 latency | < 2 s | < 20 ms (index-optimized raw SQL) | 2026-07-27 |
 | Monthly LLM spend | < €250 | — | — |
+| Extraction call-count drop (gate, #6.2/#6.3) | measurable, non-zero | 2/18 documents (11.1%) skipped — both `out_of_area`, 0 `near_duplicate` on this corpus | 2026-08-08 |
 | PITR restore duration | < 60 min | 55 seconds (local Docker drill) | 2026-07-27 |
 
 ---
@@ -147,6 +148,7 @@ ADRs live in `docs/adr/`. Record here anything that surprised you and changed th
 | 2026-07-23 | Pinned `.python-version` to 3.12 | Local `uv` default-resolved to 3.14 (newer than any dependency has been validated against); pyproject targets py312 throughout (ruff, mypy, Docker base image) |
 | 2026-07-23 | `001_core.py` creates `authority` before `problem`; `chunk.tsv` + its GIN index moved out of 001 into 002 | IMPLEMENTATION_PLAN.md §6 lists `authority` after `problem`, but `problem.authority_id` FKs it — unrunnable as written. `chunk.tsv` is `GENERATED ALWAYS AS (to_tsvector('greek_cfg', ...))`, and `greek_cfg` doesn't exist until 0.5 — bundling it in 001 would make 001 unrunnable before 0.5 lands |
 | 2026-07-27 | Configured `greek_cfg` to map to `unaccent` then `simple` directly | The Debian `hunspell-el` dictionary compound rules cause Postgres's `ispell` template parser to loop/hang indefinitely. Bypassing it with `unaccent` + `simple` solves the hang, and prefix/trigram searches match perfectly. |
+| 2026-08-08 | Phase B gate (#6.2/#6.3) measured by replaying `should_extract` over the 18 already-extracted documents, not by re-running the pipeline | The gate is a pure function — replay costs nothing and needs no new LLM spend. Result: 2/18 skipped (both out-of-area), 0 near-duplicate. Corpus is only 18 documents from a handful of ingestion runs, so the near-dup rate of 0 should not be read as "duplicates don't happen" — it means this small corpus happened not to contain any. Revisit once real ingestion volume exists. |
 
 ---
 

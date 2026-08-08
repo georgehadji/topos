@@ -190,10 +190,10 @@ this is a hypothesis, not a finding.
 
 | Phase | Items | Gate to the next |
 |---|---|---|
-| A | 6.1 cost, cache hit-rate counter, fix chain order | a real €/month figure exists |
-| B | 6.2 out-of-area gate, 6.3 near-dup | measured call-count drop |
-| C | 6.4 port change → cache-capable model evaluation | golden fixtures still green |
-| D | 6.5 cascade | golden fixtures still green |
+| A | 6.1 cost, cache hit-rate counter, fix chain order | a real €/month figure exists — **DONE** |
+| B | 6.2 out-of-area gate, 6.3 near-dup | measured call-count drop — **DONE**, 2/18 docs (11.1%) on the current corpus, see docs/PROGRESS.md > Measurements |
+| C | 6.4 port change → cache-capable model evaluation | golden fixtures still green — **DONE** |
+| D | 6.5 cascade | golden fixtures still green — **DONE**, `adapters/llm/cascade.py`; disabled by default (`llm_cascade_models` empty) until a cheap-model quality comparison exists |
 | — | 6.6 batch, 6.7 chunking | only if A's numbers justify |
 
 A must come first and is not optional. Every later item is a claim about
@@ -212,8 +212,8 @@ failed against real data.
 
 ## 4. ADRs owed
 
-| ADR | Subject |
-|---|---|
-| 019 | `cache_prefix` on the `LlmClient` port |
-| 020 | Model family change away from Mistral, if 6.4 proceeds |
-| 021 | Decorator chain ordering and its invariants |
+| ADR | Subject | Status |
+|---|---|---|
+| 019 | `cache_prefix` on the `LlmClient` port | **Written** |
+| 020 | Model family change away from Mistral, if 6.4 proceeds | **Not yet** — `llm_model` is still `mistralai/mistral-large-2512`; only the port change landed, no model was actually switched, so there is no decision yet to record |
+| 021 | Decorator chain ordering and its invariants | **Written** — covers the chain as of Cascade (#6.5) landing |

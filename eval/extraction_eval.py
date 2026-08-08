@@ -23,9 +23,11 @@ class MockLlmClient:
 
     async def complete(
         self,
+        *,
         prompt: str,
         model: str,
         response_format: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         # Find which document text this prompt contains
         matched_content = ""
