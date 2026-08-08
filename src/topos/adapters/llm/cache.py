@@ -40,6 +40,7 @@ class Cache:
         prompt: str,
         model: str,
         response_format: dict[str, Any] | None = None,
+        cache_prefix: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         cache_key = hashlib.sha256(
@@ -49,6 +50,7 @@ class Cache:
                     "model": model,
                     "format": response_format,
                     "tools": kwargs.get("tools"),
+                    "cache_prefix": cache_prefix,
                 },
                 sort_keys=True,
             ).encode()
@@ -67,7 +69,11 @@ class Cache:
 
         self.misses += 1
         result = await self._inner.complete(
-            prompt=prompt, model=model, response_format=response_format, **kwargs
+            prompt=prompt,
+            model=model,
+            response_format=response_format,
+            cache_prefix=cache_prefix,
+            **kwargs,
         )
 
         self._memory[cache_key] = result

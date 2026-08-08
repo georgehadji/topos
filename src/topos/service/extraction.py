@@ -30,7 +30,12 @@ _MAX_CONFIDENCE = Decimal("1")
 
 # Greek text uses Unicode characters that ruff flags as ambiguous.
 # This is intentional — "A' Thessalonikis" is a proper name.
-_PROMPT_TEMPLATE = (
+#
+# Split into a static preamble and a per-chunk suffix (Phase 6 #6.4,
+# ADR-019): the preamble is identical on every call, so it is passed as
+# ``cache_prefix`` rather than interpolated into one string, letting a
+# cache-capable model bill it once instead of on every chunk.
+_PROMPT_PREAMBLE = (
     "You are a policy analyst for the constituency of A' Thessalonikis.\n"
     "Your task is to read the following excerpt from a Greek public-sector"
     " document and extract ANY mention of a citizen-affecting problem.\n"
@@ -68,11 +73,9 @@ _PROMPT_TEMPLATE = (
     "Respond ONLY with a JSON array. No explanation, no markdown,"
     " no preamble.\n"
     "\n"
-    "Document excerpt:\n"
-    "---\n"
-    "{chunk_text}\n"
-    "---"
 )
+
+_PROMPT_SUFFIX_TEMPLATE = "Document excerpt:\n---\n{chunk_text}\n---"
 
 
 async def extract_chunk(
@@ -85,7 +88,7 @@ async def extract_chunk(
     prompt_ver: str = "1.0.0",
 ) -> ExtractedChunk:
     """Extract claims from a single chunk using the LLM."""
-    prompt = _PROMPT_TEMPLATE.format(chunk_text=text)
+    prompt = _PROMPT_SUFFIX_TEMPLATE.format(chunk_text=text)
 
     try:
         # artifact_id/prompt_ver are consumed by the Telemetry decorator, which
@@ -93,6 +96,7 @@ async def extract_chunk(
         # written (artifact_id is NOT NULL).
         result = await llm_client.complete(
             prompt=prompt,
+            cache_prefix=_PROMPT_PREAMBLE,
             model=model,
             response_format={"type": "json_object"},
             artifact_id=artifact_id,

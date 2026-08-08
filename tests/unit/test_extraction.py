@@ -7,9 +7,12 @@ and _validate_claims. No IO, no mocks.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
+
+import pytest
 
 from topos.domain.extraction import Span
-from topos.service.extraction import _parse_response, _validate_claims
+from topos.service.extraction import _parse_response, _validate_claims, extract_chunk
 
 
 def test_parse_valid_json_array() -> None:
@@ -176,6 +179,33 @@ def test_validate_ignores_unparseable_confidence() -> None:
     ]
     result = _validate_claims(raw, "0123456789")
     assert result[0].claim.confidence == Decimal("0.5")
+
+
+class _FakeLlmClient:
+    """Records the kwargs it was called with; returns an empty extraction."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def complete(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        return {"choices": [{"message": {"content": "[]"}}]}
+
+
+@pytest.mark.asyncio
+async def test_extract_chunk_passes_the_static_preamble_as_cache_prefix() -> None:
+    """Phase 6 #6.4: the static instruction block must travel as cache_prefix,
+    not be re-interpolated into the per-chunk prompt on every call."""
+    client = _FakeLlmClient()
+
+    await extract_chunk(client, 0, "κείμενο τμήματος")
+
+    assert len(client.calls) == 1
+    call = client.calls[0]
+    assert "κείμενο τμήματος" in call["prompt"]
+    assert call["cache_prefix"]
+    assert "κείμενο τμήματος" not in call["cache_prefix"]
+    assert "Document excerpt" not in call["cache_prefix"]
 
 
 def test_validate_multiple_claims_mixed_quality() -> None:

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from topos.adapters.sentiment import _parse
+from topos.adapters.sentiment import OpenRouterSentiment, _parse
 from topos.domain.sentiment import SentimentLabel, aggregate
 from topos.service.sentiment import score_sentiment
 
@@ -76,6 +76,25 @@ def test_unknown_label_rejects_the_batch() -> None:
 def test_unparseable_reply_is_rejected_not_defaulted() -> None:
     assert _parse("model had a bad day", expected=1) is None
     assert _parse("", expected=1) is None
+
+
+# ── Adapter call shape ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_sentiment_adapter_passes_static_instructions_as_cache_prefix() -> None:
+    """Phase 6 #6.4: the fixed Greek instruction block must travel as
+    cache_prefix, not be re-interpolated into the prompt on every call."""
+    llm = AsyncMock()
+    llm.complete = AsyncMock(return_value='{"labels": ["negative"]}')
+    analyzer = OpenRouterSentiment(llm, model="m")
+
+    await analyzer(["κείμενο προς ταξινόμηση"])
+
+    kwargs = llm.complete.call_args.kwargs
+    assert "κείμενο προς ταξινόμηση" in kwargs["prompt"]
+    assert kwargs["cache_prefix"]
+    assert "κείμενο προς ταξινόμηση" not in kwargs["cache_prefix"]
 
 
 # ── Persistence ─────────────────────────────────────────────────────────────

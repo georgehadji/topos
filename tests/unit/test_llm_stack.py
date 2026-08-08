@@ -94,6 +94,21 @@ async def test_cache_hits_memory() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cache_key_distinguishes_by_cache_prefix() -> None:
+    """Phase 6 #6.4: cache_prefix is part of the effective request, so two
+    calls with the same prompt/model but different prefixes must not
+    collide in the cache."""
+    provider = DummyProvider({"choices": [{"message": {"content": "x"}}]})
+    cache = Cache(provider, pool=None)
+
+    await cache.complete(prompt="chunk text", model="test-model", cache_prefix="preamble A")
+    await cache.complete(prompt="chunk text", model="test-model", cache_prefix="preamble B")
+
+    assert provider.calls == 2
+    assert cache.misses == 2
+
+
+@pytest.mark.asyncio
 async def test_cache_counts_hits_and_misses_separately() -> None:
     """ADR-015: Cache is the only layer that ever sees a hit — Telemetry by
     design never does — so it must keep its own count rather than relying on

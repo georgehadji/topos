@@ -19,6 +19,24 @@ LlmCallable = Callable[
 ]
 
 
+def _content_for(prompt: str, cache_prefix: str | None) -> str | list[dict[str, Any]]:
+    """The message ``content`` OpenRouter accepts (Phase 6 #6.4, ADR-019).
+
+    Without a prefix, a plain string — unchanged from before this existed.
+    With one, a content-parts array marking the prefix ``cache_control:
+    ephemeral`` (Anthropic-style prompt caching, passed through by
+    OpenRouter). A model whose provider ignores ``cache_control`` still reads
+    the same text — the parts concatenate to the original prompt — so this is
+    a no-op everywhere except a cache-capable model.
+    """
+    if not cache_prefix:
+        return prompt
+    return [
+        {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": prompt},
+    ]
+
+
 class OpenRouterProvider:
     """Raw HTTP client for OpenRouter API.
 
@@ -35,12 +53,13 @@ class OpenRouterProvider:
         prompt: str,
         model: str,
         response_format: dict[str, Any] | None = None,
+        cache_prefix: str | None = None,
         **_kwargs: Any,
     ) -> dict[str, Any]:
         """Send a chat completion request and return the full response dict."""
         body: dict[str, Any] = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [{"role": "user", "content": _content_for(prompt, cache_prefix)}],
             "max_tokens": 4096,
         }
         if response_format:

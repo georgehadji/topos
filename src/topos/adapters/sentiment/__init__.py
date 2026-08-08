@@ -31,7 +31,10 @@ __all__ = ["PROMPT_VER", "OpenRouterSentiment"]
 
 PROMPT_VER = "sentiment-el-1.0.0"
 
-_PROMPT = """Είσαι ταξινομητής συναισθήματος για ελληνικά δημοσιεύματα και \
+# Static instruction block (Phase 6 #6.4, ADR-019): identical on every call,
+# so it is passed as cache_prefix rather than interpolated into one string —
+# same reasoning as service/extraction.py's _PROMPT_PREAMBLE split.
+_PROMPT_PREAMBLE = """Είσαι ταξινομητής συναισθήματος για ελληνικά δημοσιεύματα και \
 δημόσια έγγραφα που αφορούν προβλήματα μιας εκλογικής περιφέρειας.
 
 Για κάθε κείμενο, απάντησε με ΕΝΑ από τα: negative, neutral, positive.
@@ -44,10 +47,10 @@ _PROMPT = """Είσαι ταξινομητής συναισθήματος για
 - Ταξινόμησε τον ΤΟΝΟ του κειμένου, όχι το πόσο σοβαρό είναι το θέμα.
 
 Επίστρεψε ΜΟΝΟ έγκυρο JSON, χωρίς επεξήγηση:
-{{"labels": ["negative", "neutral", ...]}}
+{"labels": ["negative", "neutral", ...]}
 
 Τα κείμενα, με τη σειρά:
-{texts}"""
+"""
 
 _MAX_CHARS = 1200
 
@@ -65,7 +68,8 @@ class OpenRouterSentiment:
 
         numbered = "\n".join(f"{i + 1}. {t[:_MAX_CHARS]}" for i, t in enumerate(texts))
         result = await self._llm.complete(
-            prompt=_PROMPT.format(texts=numbered),
+            prompt=numbered,
+            cache_prefix=_PROMPT_PREAMBLE,
             model=self._model,
             response_format={"type": "json_object"},
         )

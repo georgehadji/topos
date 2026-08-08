@@ -42,6 +42,7 @@ class LlmClient(Protocol):
         schema: type[BaseModel] | None = None,
         response_format: dict[str, object] | None = None,
         tools: list[dict[str, object]] | None = None,
+        cache_prefix: str | None = None,
     ) -> Any:
         """Send a completion request.
 
@@ -53,6 +54,11 @@ class LlmClient(Protocol):
         (``OpenRouterProvider``, ``SonarProvider``, ``FallbackProvider``)
         ignore this. Providers that use the Responses API (``XaiProvider``)
         forward it to the tool-calling endpoint.
+        *cache_prefix* is a static preamble (e.g. a fixed instruction block)
+        that precedes *prompt* (Phase 6 #6.4, ADR-019). A provider that
+        supports prompt caching marks it as a distinct cached block; one that
+        does not simply concatenates it ahead of *prompt* — never a required
+        capability, so every existing caller is unaffected.
         """
 
 
